@@ -1,4 +1,4 @@
-# Runs the database only. The server and frontend run outside Docker on day 1.
+# Runs the database only. The server and frontend run outside Docker.
 # Start: docker compose up -d
 
 services:
@@ -15,6 +15,11 @@ services:
     volumes:
       # Persist database data between runs. Without this, every docker compose down wipes everything.
       - db_data:/var/lib/postgresql/data
+      # Postgres runs every .sql file in this directory, in filename order,
+      # but only on first startup (empty data volume). schema.sql then
+      # seed.sql sorts correctly by name. To re-run after editing them,
+      # `docker compose down -v` first to wipe db_data, then `up -d` again.
+      - ./db:/docker-entrypoint-initdb.d
 
 volumes:
   db_data:

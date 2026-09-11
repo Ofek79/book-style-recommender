@@ -1,0 +1,8 @@
+# Normalize every text file to LF inside the repository, and check it out as LF
+# on every OS. This keeps line endings identical for all contributors regardless
+# of their editor or platform.
+* text=auto eol=lf
+
+# Windows batch scripts only work with CRLF - exempt them if any are ever added.
+*.bat text eol=crlf
+*.cmd text eol=crlf

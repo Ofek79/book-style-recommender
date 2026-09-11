@@ -94,6 +94,15 @@ Open `http://localhost:5173`. The page should show **Backend health: ok**.
 | Backend    | http://localhost:8000   |
 | PostgreSQL | localhost:5432          |
 
+## Architecture
+
+The browser loads the React app from Vite (`http://localhost:5173`). React
+calls the backend at `VITE_API_URL` (`http://localhost:8000`) using `fetch`.
+FastAPI handles the request and returns a JSON response. React reads the
+JSON and renders it on the page. Day 1 has one route (`/health`) and no
+database access yet; once the app queries book data, the backend will also
+talk to PostgreSQL before responding.
+
 ## Project layout
 
 ```
