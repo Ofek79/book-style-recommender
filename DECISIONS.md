@@ -4,6 +4,16 @@ Each decision records: the decision, the rejected alternatives, and the reasonin
 
 ---
 
+## 2026-09-06 — Line endings: LF everywhere, enforced by `.gitattributes`
+
+**Decision:** A `.gitattributes` file with `* text=auto eol=lf` normalizes every text file to LF in the repository and on checkout, on every OS. Windows batch files (`*.bat`, `*.cmd`) are exempted to CRLF since they require it.
+
+**Rejected alternatives:**
+- **No `.gitattributes`, rely on each developer's `core.autocrlf`.** That setting is per-machine and easily misconfigured; a Windows editor saving CRLF then leaks it into commits, producing noisy diffs where every line looks changed and breaking shell scripts and Dockerfiles that expect LF.
+- **`* text=auto` without `eol=lf`.** Stores LF in the repo but checks out CRLF on Windows. Fine for most files, but this project's `docker-compose.yml` and any future shell scripts run in Linux containers where CRLF causes failures. Forcing LF on checkout too keeps the working tree identical to what runs in Docker/CI.
+
+**Reasoning:** The build is developed on Windows but the database (and later the backend) runs in Linux containers, and an interviewer may clone it on macOS or Linux. One committed policy file makes line endings deterministic for everyone and removes a whole class of "works on my machine" diffs and script failures. The cost is one small file.
+
 ## 2026-09-06 — Main branch name: `main`
 
 **Decision:** The repo's main branch is called `main` (renamed from the `master` that git created by default).
@@ -70,3 +80,87 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Backend versions (checked 2026-09-06 against PyPI):** `fastapi==0.141.1`, `uvicorn[standard]==0.52.4` — current stable, same reasoning as the frontend bump. Machine has Python 3.13.
 
 **Also decided:** `server.strictPort: true` in `vite.config.js`. If port 5173 is taken, Vite fails with an error instead of silently moving to 5174 — where the backend CORS allow-list (origin `http://localhost:5173` only) would then reject every request, which is confusing to debug.
+
+---
+
+## 2026-09-11 — Genre: a book field from Open Library, not a style attribute
+
+**Decision:** Genre is stored as a plain field on the books table, populated from Open Library metadata. It is not one of the manually-tagged style attributes, and it is not an input to the similarity score itself. How it participates in recommendations (filter vs. a cross-genre toggle) is decided separately in the similarity-function discussion.
+
+**Rejected alternatives:**
+- **An 11th manually-tagged style attribute.** Rejected because genre answers "what is the book about" (content/category), while every other attribute answers "how is it written" (style) — the whole premise of this project is style-based recommendation. Folding genre into the same vector would conflate two different kinds of similarity and muddy the rationale text shown to the user.
+- **Manually tagging genre like the other attributes.** Rejected as duplicate, error-prone work: Open Library already supplies genre/subject metadata for each book, so re-tagging it by hand only risks disagreeing with an external source of truth for no benefit.
+
+**Reasoning:** Keeps the style vector purely about writing style (matches the product's stated algorithm scope in CLAUDE.md) while still keeping genre available as descriptive metadata and as a lever the recommendation logic can use explicitly and visibly, rather than silently through a tagged score.
+
+---
+
+## 2026-09-11 — Similarity function: weighted sum of per-attribute distances
+
+**Decision:** The similarity score between two books is `1 - weighted average of per-attribute distances` across the 10 style attributes (numeric attributes normalized to 0-1 before differencing; categorical/boolean attributes score 0 if equal, 1 if different). Genre plays no part in this score. Genre is always shown as metadata on a recommendation, with an optional toggle to either require the same genre or require a different genre (cross-genre discovery); the default is no genre filtering at all.
+
+**Rejected alternatives:**
+- **Cosine similarity over an encoded attribute vector.** A single cosine value does not decompose cleanly back into a per-attribute rationale sentence, which conflicts with the hard product requirement that every recommendation returns with a readable rationale, not just a score.
+- **Rule-based tiered points per attribute.** Maximally explainable, but requires hand-writing a scoring rule per attribute up front for little extra clarity over the weighted-distance approach, whose per-attribute distances already convert directly into rationale text.
+- **Genre as a hard pre-filter on the candidate pool.** Rejected because with only ~150 books, filtering by genre first could leave very few candidates in niche genres, and it would hide the product's actual differentiator — style similarity that crosses genre lines.
+
+**Reasoning:** Matches CLAUDE.md's stated algorithm scope (a hand-designed weighted similarity function over hand-defined style attributes, no embeddings, every recommendation with a rationale). Per-attribute distances rank naturally into "closest attributes" for the rationale text. Keeping genre out of the score but visible and optionally togglable makes it an explicit, explainable lever instead of a silent input baked into one number.
+
+---
+
+## 2026-09-11 — Indexes on `books.title` and `books.author`
+
+**Decision:** Create a plain B-tree index on `books.title` and one on `books.author`, as part of the initial schema rather than added later.
+
+**Rejected alternatives:**
+- **No index, add one later if search feels slow.** Rejected because search is the app's core action (per the product description in CLAUDE.md); defining the index in the initial schema costs nothing and avoids diagnosing slow queries after the fact.
+- **`pg_trgm` trigram index for fuzzy/substring search.** Rejected for now: it's a Postgres extension, which counts as a new tool under rule 3 and needs its own ask. With ~150 rows, a plain B-tree behind a prefix search (`ILIKE 'term%'`) is already fast enough. Revisit if fuzzy/substring search becomes a real requirement.
+
+**Reasoning:** Search is the primary operation of the app; better to define the index upfront in the schema than to discover the slowness later.
+
+---
+
+## 2026-09-11 — Untagged books: no schema field, the join is the source of truth
+
+**Decision:** No boolean/status column is added to mark whether a book is tagged. A book counts as tagged if and only if a matching row exists in `book_style_attributes`. Search over `books` (title/author) works independently of tagging status — an untagged book is still findable by search. An untagged book cannot act as a similarity candidate for anyone else's recommendations, and cannot itself receive recommendations, because the weighted-distance function has no attribute vector to compute with; this is enforced naturally by an `INNER JOIN` from `books` to `book_style_attributes` when building the candidate pool, so untagged books drop out with no extra filter logic. The exact response shape when a user requests recommendations for an untagged book is decided in the API contract (section 4).
+
+**Rejected alternative:** A redundant `is_tagged` boolean column on `books`. Rejected because it could drift out of sync with whether a `book_style_attributes` row actually exists (e.g. a row gets deleted and the flag isn't updated); the join already answers the same question with no extra state to keep consistent.
+
+**Reasoning:** Keeps tagging status single-sourced from the data instead of a denormalized flag that needs to be kept in sync — matches rule 4 (prefer simple and clear).
+
+---
+
+## 2026-09-11 — Database access: `psycopg` (v3), raw SQL, no ORM
+
+**Decision:** Backend database access uses `psycopg[binary]` (psycopg 3) as the driver. Queries are written as plain SQL strings — no query builder, no ORM.
+
+**Rejected alternatives:**
+- **SQLAlchemy Core (query builder).** Replaces raw SQL strings with a Python API (`select()`, `Table()`), but that API itself needs explaining, for no real benefit over hand-written SQL on a two-table schema.
+- **SQLAlchemy ORM (declarative models + session).** The most common choice in FastAPI tutorials, but adds the most moving parts to defend line-by-line in an interview (model classes, session lifecycle, lazy loading) for a schema this small.
+- **`psycopg2` instead of `psycopg` (v3).** `psycopg2` is in maintenance mode; `psycopg` (v3) is its actively developed successor — same reasoning already used for picking current-stable versions elsewhere (see the frontend/backend version entry above).
+
+**Reasoning:** Every query in the code is exactly the SQL from the schema in this file — nothing hidden behind an abstraction layer, which matches rule 4 (prefer simple and clear) and is the easiest version of this decision to defend line-by-line.
+
+**Version (checked 2026-09-11 against PyPI):** `psycopg[binary]==3.3.5` — current stable, same reasoning as the other pinned versions in this log.
+
+---
+
+## 2026-09-11 — Loading `.env` into the backend process: `python-dotenv`
+
+**Decision:** Use `python-dotenv` (`load_dotenv()`) to load the root `.env` file into `os.environ` at server startup, so `DATABASE_URL` is readable in Python. Vite does this automatically for the frontend; the Python server has no equivalent built in.
+
+**Rejected alternative:** A hand-rolled `.env` parser (open the file, split each line on `=`, set `os.environ`). Avoids one dependency, but re-implements something `python-dotenv` already solves correctly (quoting, comments, blank lines) — more code to maintain and explain for no real benefit.
+
+**Reasoning:** `python-dotenv` is the standard, widely-known solution to this exact problem in Python — a single well-known function call is easier to defend than a hand-rolled parser, matching rule 4.
+
+**Version (checked 2026-09-11 against PyPI):** `python-dotenv==1.2.3` — current stable.
+
+---
+
+## 2026-09-11 — Equal weights for all style attributes (v1 baseline)
+
+**Decision:** All ten style attributes start with equal weight in the similarity function (see `backend/similarity.py` — a single `WEIGHTS` dict at the top of the file, not spread through the scoring logic, so a future tuning pass edits one dict and nothing else).
+
+**Rejected alternative:** Hand-picked custom weights per attribute from the start. Rejected for this first version — with only 14 seed books there is no real test set to justify preferring, say, pacing over tone. Assigning custom weights now would be guessing dressed up as design.
+
+**Reasoning:** This is a deliberate, documented baseline, not an oversight: equal weights are a neutral, defensible starting point. Tuning is deferred until there are close to the full ~150 tagged books and a real test set to check whether a change actually improves recommendations, instead of tuning against noise from 14 rows.
