@@ -164,3 +164,33 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** Hand-picked custom weights per attribute from the start. Rejected for this first version — with only 14 seed books there is no real test set to justify preferring, say, pacing over tone. Assigning custom weights now would be guessing dressed up as design.
 
 **Reasoning:** This is a deliberate, documented baseline, not an oversight: equal weights are a neutral, defensible starting point. Tuning is deferred until there are close to the full ~150 tagged books and a real test set to check whether a change actually improves recommendations, instead of tuning against noise from 14 rows.
+
+---
+
+## 2026-09-12 — Bookstore link: generic Google search, built by one function
+
+**Decision:** `GET /books/{id}/recommendations` builds `bookstore_search_url` with a single function, `build_bookstore_search_url(title, author)`, currently pointing at a generic Google search (`https://www.google.com/search?q=<title> <author>`).
+
+**Rejected alternative:** Hardcoding a specific bookstore's URL format (e.g. Amazon, Tzomet Sfarim, Steimatzky) directly in the endpoint. Rejected because it commits to one vendor's URL scheme before that choice is made, and would mean editing the endpoint itself to switch providers later.
+
+**Reasoning:** A generic search engine query needs no vendor API or account and works for any title/author. Isolating it in one small function means swapping the target later touches one place, not the endpoint logic.
+
+---
+
+## 2026-09-12 — Recommendation ranking: sort on the full-precision score, round only for display
+
+**Decision:** `GET /books/{id}/recommendations` sorts candidates by the raw similarity score from `similarity.py`, and rounds to 3 decimal places only when building the JSON response.
+
+**Rejected alternative:** Rounding before sorting. Rejected because two genuinely different books could round to the same 3-decimal score, and sorting on the rounded value would then order them arbitrarily (by whatever order the DB happened to return them) instead of by true similarity.
+
+**Reasoning:** Keeps the displayed number short and readable without sacrificing correct ordering.
+
+---
+
+## 2026-09-12 — `HANDOFF.md` added ahead of the 3-week break
+
+**Decision:** Added `HANDOFF.md`, outside the original approved file list, to record project state before the 3-week break between day 3 and the next working session.
+
+**Rejected alternative:** Relying on `README.md` + `DECISIONS.md` alone. Rejected because `README.md` explains how to run the current code and `DECISIONS.md` explains why past choices were made, but neither says what is still unbuilt or what to do first on return - a gap that matters specifically because of the long pause.
+
+**Reasoning:** One dated entry point for picking the project back up, rather than reconstructing status from commit history and memory.

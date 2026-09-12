@@ -1,4 +1,4 @@
--- Demo data: 14 real, well-known books with hand-picked style attributes,
+-- Demo data: real, well-known books with hand-picked style attributes,
 -- chosen to cover a spread of values on every attribute so similarity
 -- results are easy to sanity-check (e.g. Hemingway/McCarthy should come
 -- out close; Tolkien/Garcia Marquez should come out close despite
@@ -23,7 +23,11 @@ INSERT INTO books (open_library_id, title, author, genre) VALUES
     ('seed-the-hunger-games', 'The Hunger Games', 'Suzanne Collins', 'Young Adult Dystopian'),
     ('seed-fault-in-our-stars', 'The Fault in Our Stars', 'John Green', 'Young Adult'),
     ('seed-dracula', 'Dracula', 'Bram Stoker', 'Gothic Horror'),
-    ('seed-da-vinci-code', 'The Da Vinci Code', 'Dan Brown', 'Thriller');
+    ('seed-da-vinci-code', 'The Da Vinci Code', 'Dan Brown', 'Thriller'),
+    -- Deliberately has no matching row below in book_style_attributes:
+    -- a real, plausible "not tagged yet" book for testing that path
+    -- (untagged in search results, 409 from /recommendations).
+    ('seed-brave-new-world', 'Brave New World', 'Aldous Huxley', 'Dystopian Fiction');
 
 -- One row per book above, matched by open_library_id so this does not
 -- depend on the auto-generated id order.
