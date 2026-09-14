@@ -71,7 +71,8 @@ rationale and a link to search for the book in a bookstore.
 Added on request, outside the original list (all in `DECISIONS.md`):
 `DECISIONS.md`, this file, `frontend/vite.config.js`, `frontend/.env.example`,
 `.gitattributes`, `db/schema.sql`, `db/seed.sql`, `backend/db.py`,
-`backend/similarity.py`, `HANDOFF.md`.
+`backend/similarity.py`, `HANDOFF.md`, `backend/requirements-dev.txt`,
+`backend/test_similarity.py`.
 
 **Environment files:** two separate `.env` files — root (`POSTGRES_*`,
 `DATABASE_URL`, for docker-compose + backend) and `frontend/.env`

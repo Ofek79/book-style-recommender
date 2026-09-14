@@ -194,3 +194,13 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** Relying on `README.md` + `DECISIONS.md` alone. Rejected because `README.md` explains how to run the current code and `DECISIONS.md` explains why past choices were made, but neither says what is still unbuilt or what to do first on return - a gap that matters specifically because of the long pause.
 
 **Reasoning:** One dated entry point for picking the project back up, rather than reconstructing status from commit history and memory.
+
+---
+
+## 2026-09-14 — Testing: `pytest`, dev-only, in `backend/requirements-dev.txt`
+
+**Decision:** Tests for `similarity.py` use `pytest`, listed in a new `backend/requirements-dev.txt` (`-r requirements.txt` + `pytest`) rather than in `requirements.txt` itself, so installing the app to run it doesn't also pull in a testing library.
+
+**Rejected alternative:** `unittest` (Python's standard library, no new dependency). Rejected because it needs `TestCase` classes and `self.assertEqual(...)` instead of plain `assert`, and has no built-in equivalent to `@pytest.mark.parametrize` for the several small, repetitive attribute-distance cases here - more boilerplate for the same coverage, and `pytest` is what a reviewer of a Python project expects to see.
+
+**Reasoning:** `pytest` is the de facto standard for testing Python projects, which matters for how the project reads to an interviewer, and it is dev-only cost: nothing about running the server depends on it.

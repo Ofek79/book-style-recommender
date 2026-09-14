@@ -1,0 +1,6 @@
+# Development-only dependencies (testing). Not needed to run the server.
+# Install: pip install -r requirements-dev.txt
+# (pulls in requirements.txt too, so one install covers both.)
+
+-r requirements.txt
+pytest==9.1.1
