@@ -71,8 +71,8 @@ def test_attribute_distance_categorical_equal_and_different():
 # product's "readable rationale" requirement, so the wording itself is
 # worth locking down, not just "some string came back".
 def test_describe_attribute_numeric():
-    assert similarity.describe_attribute("tone", 3, 3) == "Both have the same tone (3)."
-    assert similarity.describe_attribute("tone", 3, 5) == "Similar tone (3 vs 5)."
+    assert similarity.describe_attribute("tone", 3, 3) == "שני הספרים זהים בטון (3)."
+    assert similarity.describe_attribute("tone", 3, 5) == "טון דומה (3 לעומת 5)."
 
 
 # Takes nothing. Checks the exact wording for a boolean attribute, both
@@ -82,21 +82,21 @@ def test_describe_attribute_numeric():
 def test_describe_attribute_boolean():
     assert (
         similarity.describe_attribute("is_present_tense", True, True)
-        == "Both have present tense."
+        == "לשני הספרים זמן הווה."
     )
     assert (
         similarity.describe_attribute("is_present_tense", True, False)
-        == "Differ in tense: present tense vs past tense."
+        == "הבדל בזמן דקדוקי: זמן הווה לעומת זמן עבר."
     )
 
 
 # Takes nothing. Checks the exact wording for a plain categorical
 # attribute, equal and different.
 def test_describe_attribute_categorical():
-    assert similarity.describe_attribute("pov", "first", "first") == "Both are first in point of view."
+    assert similarity.describe_attribute("pov", "first", "first") == "שני הספרים גוף ראשון בגוף הסיפור."
     assert (
         similarity.describe_attribute("pov", "first", "third_omniscient")
-        == "Differ in point of view: first vs third_omniscient."
+        == "הבדל בגוף הסיפור: גוף ראשון לעומת גוף שלישי יודע-כל."
     )
 
 
@@ -122,9 +122,9 @@ def test_build_rationale_picks_closest_attributes_in_order():
         "has_humor": 0.9,
     }
     assert similarity.build_rationale(attrs, attrs, distances) == [
-        "Both have the same description density (2).",
-        "Both have the same vocabulary complexity (2).",
-        "Both have the same tone (3).",
+        "שני הספרים זהים בצפיפות תיאור (2).",
+        "שני הספרים זהים במורכבות אוצר מילים (2).",
+        "שני הספרים זהים בטון (3).",
     ]
 
 
@@ -179,9 +179,9 @@ def test_similarity_known_seed_pair():
     score, rationale = similarity.similarity(OLD_MAN_AND_THE_SEA, THE_ROAD)
     assert score == pytest.approx(0.925)
     assert rationale == [
-        "Both are short in sentence length.",
-        "Both are low in dialogue ratio.",
-        "Both are third_limited in point of view.",
+        "שני הספרים קצר באורך משפטים.",
+        "שני הספרים נמוך ביחס דיאלוג.",
+        "שני הספרים גוף שלישי מוגבל בגוף הסיפור.",
     ]
 
 

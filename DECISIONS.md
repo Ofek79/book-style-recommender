@@ -204,3 +204,13 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** `unittest` (Python's standard library, no new dependency). Rejected because it needs `TestCase` classes and `self.assertEqual(...)` instead of plain `assert`, and has no built-in equivalent to `@pytest.mark.parametrize` for the several small, repetitive attribute-distance cases here - more boilerplate for the same coverage, and `pytest` is what a reviewer of a Python project expects to see.
 
 **Reasoning:** `pytest` is the de facto standard for testing Python projects, which matters for how the project reads to an interviewer, and it is dev-only cost: nothing about running the server depends on it.
+
+---
+
+## 2026-10-10 — UI language: Hebrew interface, English code and data
+
+**Decision:** Every user-facing string in the frontend (`frontend/index.html`, `frontend/src/App.jsx`) is in Hebrew, with `lang="he"` and `dir="rtl"` set on the page. The rationale sentences built in `backend/similarity.py` are also in Hebrew, since the user reads them directly. Everything else - variable/function names, comments, commit messages, and the values actually stored in the database (`short`, `third_limited`, `low`, etc.) - stays in English, unchanged from rule 7.
+
+**Rejected alternative:** Also storing/writing the style-attribute values themselves in Hebrew. Rejected because it would mix the display language into the data layer: the database holds `sentence_length`/`pov`/etc. as plain English category codes, and `similarity.py` translates a value to Hebrew only at the point it builds a sentence (via `CATEGORICAL_VALUE_LABELS` and `BOOLEAN_LABELS`).
+
+**Reasoning:** Keeping stored values in English and translating only at the display/wording layer separates data from presentation: the system is not locked into one interface language, and a future English UI (or a second language) would need to change only the wording dictionaries in `similarity.py` and the frontend strings - never touch the database or the comparison logic.
