@@ -27,24 +27,40 @@ NUMERIC_ATTRIBUTES = {"description_density", "tone", "pacing", "vocabulary_compl
 NUMERIC_SCALE_MAX_DIFF = 4  # 5 - 1: largest possible difference on a 1-5 scale
 
 # Human-readable label for each attribute, used to build rationale text.
+# Rationale text is user-facing, so it is in Hebrew (see DECISIONS.md);
+# names, comments, and everything else in this file stay English.
 ATTRIBUTE_LABELS = {
-    "sentence_length": "sentence length",
-    "description_density": "description density",
-    "dialogue_ratio": "dialogue ratio",
-    "pov": "point of view",
-    "is_present_tense": "tense",
-    "tone": "tone",
-    "pacing": "pacing",
-    "vocabulary_complexity": "vocabulary complexity",
-    "is_nonlinear": "story structure",
-    "has_humor": "humor",
+    "sentence_length": "אורך משפטים",
+    "description_density": "צפיפות תיאור",
+    "dialogue_ratio": "יחס דיאלוג",
+    "pov": "גוף הסיפור",
+    "is_present_tense": "זמן דקדוקי",
+    "tone": "טון",
+    "pacing": "קצב",
+    "vocabulary_complexity": "מורכבות אוצר מילים",
+    "is_nonlinear": "מבנה עלילה",
+    "has_humor": "הומור",
 }
 
 # How to word True/False for each boolean attribute in a sentence.
 BOOLEAN_LABELS = {
-    "is_present_tense": {True: "present tense", False: "past tense"},
-    "is_nonlinear": {True: "a nonlinear structure", False: "a linear structure"},
-    "has_humor": {True: "humor", False: "no humor"},
+    "is_present_tense": {True: "זמן הווה", False: "זמן עבר"},
+    "is_nonlinear": {True: "מבנה לא-ליניארי", False: "מבנה ליניארי"},
+    "has_humor": {True: "הומור", False: "בלי הומור"},
+}
+
+# How to word each stored categorical value (English, from the database -
+# see DECISIONS.md on why the database stays English) in a rationale
+# sentence. Keyed by attribute name, then by the stored value.
+CATEGORICAL_VALUE_LABELS = {
+    "sentence_length": {"short": "קצר", "medium": "בינוני", "long": "ארוך"},
+    "dialogue_ratio": {"low": "נמוך", "medium": "בינוני", "high": "גבוה"},
+    "pov": {
+        "first": "גוף ראשון",
+        "third_limited": "גוף שלישי מוגבל",
+        "third_omniscient": "גוף שלישי יודע-כל",
+        "second": "גוף שני",
+    },
 }
 
 RATIONALE_ATTRIBUTE_COUNT = 3  # how many attributes the rationale mentions
@@ -70,17 +86,18 @@ def describe_attribute(name, value_a, value_b):
     label = ATTRIBUTE_LABELS[name]
     if name in NUMERIC_ATTRIBUTES:
         if value_a == value_b:
-            return f"Both have the same {label} ({value_a})."
-        return f"Similar {label} ({value_a} vs {value_b})."
+            return f"שני הספרים זהים ב{label} ({value_a})."
+        return f"{label} דומה ({value_a} לעומת {value_b})."
     if name in BOOLEAN_LABELS:
         if value_a == value_b:
-            return f"Both have {BOOLEAN_LABELS[name][value_a]}."
-        return f"Differ in {label}: {BOOLEAN_LABELS[name][value_a]} vs {BOOLEAN_LABELS[name][value_b]}."
+            return f"לשני הספרים {BOOLEAN_LABELS[name][value_a]}."
+        return f"הבדל ב{label}: {BOOLEAN_LABELS[name][value_a]} לעומת {BOOLEAN_LABELS[name][value_b]}."
     # Remaining attributes are plain categorical text (sentence_length,
-    # dialogue_ratio, pov).
+    # dialogue_ratio, pov) - translate the stored English value for display.
+    labels = CATEGORICAL_VALUE_LABELS[name]
     if value_a == value_b:
-        return f"Both are {value_a} in {label}."
-    return f"Differ in {label}: {value_a} vs {value_b}."
+        return f"שני הספרים {labels[value_a]} ב{label}."
+    return f"הבדל ב{label}: {labels[value_a]} לעומת {labels[value_b]}."
 
 
 # Takes the two books' attribute dicts and the per-attribute distances
