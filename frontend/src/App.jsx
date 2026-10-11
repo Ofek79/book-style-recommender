@@ -1,16 +1,45 @@
-// Full app: search a book, pick it, see style-similar recommendations
-// with a rationale and a bookstore link. No routing, no state library -
-// just useState and plain fetch calls, same as day 1.
+// Full app: switches between the main screen (search a book, pick it,
+// see style-similar recommendations) and the tagging screen (add books,
+// tag their style attributes). The switch is a plain view state, not a
+// router - see DECISIONS.md. No state library either, just useState and
+// plain fetch calls, same as day 1.
 //
 // UI text is Hebrew (the page is lang="he" dir="rtl" - see index.html);
 // names, comments, and API calls stay English.
 
 import { useState } from "react";
 
+import TaggingScreen from "./TaggingScreen";
+
 // Base URL of the API, injected by Vite from VITE_API_URL (see .env).
 const API_URL = import.meta.env.VITE_API_URL;
 
 export default function App() {
+  // Which screen is showing. Toggled by the two nav buttons below -
+  // no router, no URL change (see DECISIONS.md).
+  const [view, setView] = useState("main"); // main | tagging
+
+  return (
+    <main>
+      <h1>מומלצי סגנון</h1>
+      <nav>
+        <button type="button" onClick={() => setView("main")}>
+          חיפוש והמלצות
+        </button>
+        <button type="button" onClick={() => setView("tagging")}>
+          תיוג ספרים
+        </button>
+      </nav>
+      {view === "main" ? <MainScreen /> : <TaggingScreen />}
+    </main>
+  );
+}
+
+// The original app: search a book, pick it, see style-similar
+// recommendations with a rationale and a bookstore link. Pulled out of
+// App itself so App only has to know about switching screens - this
+// component owns every bit of state and logic the main screen needs.
+function MainScreen() {
   // Search box value (controlled input).
   const [searchTerm, setSearchTerm] = useState("");
   // Search results: null before the first search, [] if a search found
@@ -112,8 +141,7 @@ export default function App() {
   }
 
   return (
-    <main>
-      <h1>מומלצי סגנון</h1>
+    <>
       <SearchForm
         searchTerm={searchTerm}
         onSearchTermChange={setSearchTerm}
@@ -136,7 +164,7 @@ export default function App() {
           />
         </section>
       )}
-    </main>
+    </>
   );
 }
 
