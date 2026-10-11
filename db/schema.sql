@@ -2,13 +2,19 @@
 -- Run automatically by Postgres on first container startup (mounted into
 -- /docker-entrypoint-initdb.d/ in docker-compose.yml).
 
--- Book metadata, sourced from the Open Library API. Not manually edited.
+-- Book metadata, sourced from the Open Library API or added manually
+-- through the tagging UI (see DECISIONS.md on open_library_id for
+-- manually-added books).
 CREATE TABLE books (
     id SERIAL PRIMARY KEY,
     open_library_id TEXT UNIQUE NOT NULL,
     title TEXT NOT NULL,
     author TEXT NOT NULL,
     genre TEXT,
+    -- Nullable: existing seed books predate this column and have no
+    -- value to backfill (see DECISIONS.md). Required by the add-book
+    -- form for every new book, but not enforced as NOT NULL here.
+    language TEXT CHECK (language IN ('he', 'en')),
     cover_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -16,6 +22,12 @@ CREATE TABLE books (
 -- Search is the app's main action, so these are defined upfront.
 CREATE INDEX idx_books_title ON books (title);
 CREATE INDEX idx_books_author ON books (author);
+
+-- Prevents the same book (by title + author) from being added twice
+-- through the tagging UI. lower()/trim() so "1984" and " 1984 " or
+-- "1984"/"1984" with different casing count as the same book.
+CREATE UNIQUE INDEX idx_books_title_author_unique
+    ON books (lower(trim(title)), lower(trim(author)));
 
 -- Manually-tagged writing-style attributes, one row per tagged book.
 -- book_id is both the primary key and the foreign key: this table is a

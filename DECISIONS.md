@@ -214,3 +214,29 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** Also storing/writing the style-attribute values themselves in Hebrew. Rejected because it would mix the display language into the data layer: the database holds `sentence_length`/`pov`/etc. as plain English category codes, and `similarity.py` translates a value to Hebrew only at the point it builds a sentence (via `CATEGORICAL_VALUE_LABELS` and `BOOLEAN_LABELS`).
 
 **Reasoning:** Keeping stored values in English and translating only at the display/wording layer separates data from presentation: the system is not locked into one interface language, and a future English UI (or a second language) would need to change only the wording dictionaries in `similarity.py` and the frontend strings - never touch the database or the comparison logic.
+
+---
+
+## 2026-10-11 — Tagging UI: `language` column, view switch without routing, manual-book placeholders
+
+**Decision:** Three related additions for the tagging UI:
+- `books.language` is a nullable `TEXT CHECK (language IN ('he', 'en'))` column. Nullable because the 15 existing seed books predate it and have no value to backfill; required instead at the form level (`BookIn.language` in `main.py`) for every new book added through `POST /books`.
+- Switching between the main (search/recommendations) and tagging screens is a plain `view` state in `App.jsx` (`"main"` | `"tagging"`), toggled by two buttons - no router, no URL change.
+- A book added manually through `POST /books` gets a generated `open_library_id` placeholder (`f"manual-{uuid4().hex}"`, `uuid4` from the standard library) instead of a real Open Library id, since it has no real metadata source yet.
+
+**Rejected alternatives:**
+- **`language NOT NULL`, backfilled with a guessed value.** Rejected - there is no reliable way to infer the original language of the 15 seed books from the data already stored, and guessing wrong would silently corrupt data.
+- **A routing library (e.g. React Router) for the two screens.** Rejected by rule 6 (no new frontend libraries) and because two screens toggled by one piece of state need nothing a router would add.
+- **Leaving `open_library_id` NULL for manual books.** Rejected because the column is `NOT NULL UNIQUE`; relaxing that constraint would weaken the guarantee for every future Open-Library-sourced row too, not just manual ones.
+
+**Reasoning:** Each piece follows the same rule already established elsewhere in this log: nullable-with-a-reason over guessed data (same reasoning as `genre`), the simplest mechanism that satisfies "no routing" (rule 6), and a clearly-marked placeholder over weakening a constraint that protects real data (same spirit as the `seed-*` placeholder ids already in `db/seed.sql`).
+
+---
+
+## 2026-10-11 — Duplicate books: a case/whitespace-insensitive unique index, not app-only validation
+
+**Decision:** `db/schema.sql` adds `CREATE UNIQUE INDEX idx_books_title_author_unique ON books (lower(trim(title)), lower(trim(author)))`. `POST /books` catches the resulting `psycopg.errors.UniqueViolation` and returns `409 {"error": "duplicate_book", ...}` instead of a raw `500`. The frontend reads that `409` explicitly and shows its own message, the same pattern already used for `recommendations`' `not_tagged` `409`.
+
+**Rejected alternative:** Checking for an existing title+author with a `SELECT` in `main.py` before the `INSERT`, with no database constraint. Rejected because that check-then-insert has a race condition (two near-simultaneous requests can both pass the `SELECT` before either `INSERT`s) and because it protects nothing against a future direct-SQL insert - the database should be the one source of truth for "is this a duplicate," with the API layer only translating its rejection into a clean HTTP response.
+
+**Reasoning:** `lower(trim(...))` on both columns catches the realistic near-duplicates (casing, stray whitespace) that a plain `UNIQUE (title, author)` would miss, while a real different book that happens to share a title and author is rare enough not to design around. Found and fixed before the user's planned bulk data-entry session, rather than after duplicates had already accumulated.

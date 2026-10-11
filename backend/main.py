@@ -1,14 +1,17 @@
 """
-Server entry point: the book search, book detail, and recommendations
-endpoints, plus /health from day 1.
+Server entry point: the book search, book detail, recommendations, and
+tagging endpoints, plus /health from day 1.
 Run: uvicorn main:app --reload
 """
 
 from typing import Literal
 from urllib.parse import quote_plus
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from psycopg.errors import UniqueViolation
 
 from db import get_connection
 from similarity import similarity as compute_similarity
@@ -18,12 +21,43 @@ app = FastAPI(title="Book Style Recommender API")
 
 # Let the browser call the API from a different origin (frontend on 5173, server on 8000).
 # Without this the browser blocks the request from React due to the same-origin policy.
+# POST and PUT were added here once the tagging UI introduced write
+# endpoints (see DECISIONS.md) - before that, only GET was needed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
+
+
+# Request body for POST /books. Field constraints reject an empty title
+# or author before the request reaches the database. language is
+# required here even though the database column is nullable (see
+# DECISIONS.md) - existing seed books predate the column, but every new
+# book added through this form must declare one.
+class BookIn(BaseModel):
+    title: str = Field(min_length=1)
+    author: str = Field(min_length=1)
+    genre: str | None = None
+    language: Literal["he", "en"]
+
+
+# Request body for PUT /books/{id}/style-attributes. The Literal and
+# Field(ge=..., le=...) constraints mirror the CHECK constraints in
+# db/schema.sql exactly, so an invalid value is rejected with a clear
+# 422 before it ever reaches the database.
+class StyleAttributesIn(BaseModel):
+    sentence_length: Literal["short", "medium", "long"]
+    description_density: int = Field(ge=1, le=5)
+    dialogue_ratio: Literal["low", "medium", "high"]
+    pov: Literal["first", "third_limited", "third_omniscient", "second"]
+    is_present_tense: bool
+    tone: int = Field(ge=1, le=5)
+    pacing: int = Field(ge=1, le=5)
+    vocabulary_complexity: int = Field(ge=1, le=5)
+    is_nonlinear: bool
+    has_humor: bool
 
 
 @app.get("/health")
@@ -205,3 +239,91 @@ def get_recommendations(
         }
         for score, rationale, candidate in scored[:limit]
     ]
+
+
+# Takes a new book's title, author, optional genre, and language (see
+# BookIn above for validation). Returns the created row. Exists so books
+# can be added through the tagging UI without hand-written SQL.
+# open_library_id is a generated placeholder, not a real Open Library id
+# (see DECISIONS.md) - this book has no real metadata source yet.
+# 409 if a book with the same title and author (ignoring case and
+# surrounding whitespace) already exists - see the unique index in
+# db/schema.sql, which is what actually catches this.
+@app.post("/books", status_code=201)
+def create_book(book: BookIn):
+    placeholder_open_library_id = f"manual-{uuid4().hex}"
+    with get_connection() as conn, conn.cursor() as cur:
+        try:
+            cur.execute(
+                """
+                INSERT INTO books (open_library_id, title, author, genre, language)
+                VALUES (%(open_library_id)s, %(title)s, %(author)s, %(genre)s, %(language)s)
+                RETURNING id, open_library_id, title, author, genre, language, cover_url, created_at
+                """,
+                {
+                    "open_library_id": placeholder_open_library_id,
+                    "title": book.title,
+                    "author": book.author,
+                    "genre": book.genre,
+                    "language": book.language,
+                },
+            )
+        except UniqueViolation:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "duplicate_book",
+                    "message": "A book with this title and author already exists.",
+                },
+            )
+        created_book = cur.fetchone()
+        # Explicit commit: the INSERT above must survive past this
+        # connection closing, not just be visible within it.
+        conn.commit()
+    return created_book
+
+
+# Takes a book id from the path and its 10 style attributes (see
+# StyleAttributesIn above for validation). Saves them - creating the
+# book_style_attributes row if the book has never been tagged, or
+# replacing it if it has (PUT means save-or-replace, not append, so
+# re-tagging an already-tagged book is also handled by this same
+# endpoint). Returns the saved row. 404 if the book itself doesn't
+# exist - tagging only makes sense for a real book.
+@app.put("/books/{book_id}/style-attributes")
+def set_style_attributes(book_id: int, attributes: StyleAttributesIn):
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM books WHERE id = %(book_id)s", {"book_id": book_id})
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        cur.execute(
+            """
+            INSERT INTO book_style_attributes
+                (book_id, sentence_length, description_density, dialogue_ratio, pov,
+                 is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear, has_humor)
+            VALUES
+                (%(book_id)s, %(sentence_length)s, %(description_density)s, %(dialogue_ratio)s, %(pov)s,
+                 %(is_present_tense)s, %(tone)s, %(pacing)s, %(vocabulary_complexity)s,
+                 %(is_nonlinear)s, %(has_humor)s)
+            ON CONFLICT (book_id) DO UPDATE SET
+                sentence_length = EXCLUDED.sentence_length,
+                description_density = EXCLUDED.description_density,
+                dialogue_ratio = EXCLUDED.dialogue_ratio,
+                pov = EXCLUDED.pov,
+                is_present_tense = EXCLUDED.is_present_tense,
+                tone = EXCLUDED.tone,
+                pacing = EXCLUDED.pacing,
+                vocabulary_complexity = EXCLUDED.vocabulary_complexity,
+                is_nonlinear = EXCLUDED.is_nonlinear,
+                has_humor = EXCLUDED.has_humor,
+                tagged_at = now()
+            RETURNING book_id, sentence_length, description_density, dialogue_ratio, pov,
+                      is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear,
+                      has_humor, tagged_at
+            """,
+            {"book_id": book_id, **attributes.model_dump()},
+        )
+        saved_attributes = cur.fetchone()
+        conn.commit()
+    return saved_attributes
