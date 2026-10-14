@@ -240,3 +240,63 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** Checking for an existing title+author with a `SELECT` in `main.py` before the `INSERT`, with no database constraint. Rejected because that check-then-insert has a race condition (two near-simultaneous requests can both pass the `SELECT` before either `INSERT`s) and because it protects nothing against a future direct-SQL insert - the database should be the one source of truth for "is this a duplicate," with the API layer only translating its rejection into a clean HTTP response.
 
 **Reasoning:** `lower(trim(...))` on both columns catches the realistic near-duplicates (casing, stray whitespace) that a plain `UNIQUE (title, author)` would miss, while a real different book that happens to share a title and author is rare enough not to design around. Found and fixed before the user's planned bulk data-entry session, rather than after duplicates had already accumulated.
+
+---
+
+## 2026-10-13 — `GET /books` default `limit` raised to 100, no real pagination
+
+**Decision:** The default `limit` for `GET /books` is `100` (was `20`, the existing upper bound via `le=100` is unchanged). The frontend still issues a single request with no page controls.
+
+**Rejected alternative:** Building real pagination (a page-number/cursor state in the frontend, "next"/"previous" controls). Rejected for now - at this project's scale (~40 books today, a stated target of ~150), one request already returns the whole catalog comfortably under the existing `100` cap, so paging controls would add frontend state and UI for no real benefit yet.
+
+**Reasoning:** The search screen was silently hiding books past the 20th result with no way to see more - not a deliberate paging UX, just a default that was too low for the catalog's actual size. Matches rule 4 (prefer simple and clear): raise the default to cover the real catalog size rather than build pagination machinery before the data volume needs it. Revisit if the catalog ever approaches the `100` cap.
+
+---
+
+## 2026-10-14 — `backend/schemas.py`: validation shapes shared by the API and the LLM scripts
+
+**Decision:** `BookIn` and `StyleAttributesIn` moved out of `main.py` into a new `backend/schemas.py`, imported by both `main.py` and `llm_tagging.py`.
+
+**Rejected alternative:** Having `llm_tagging.py` `import main` directly instead of extracting a separate module. Rejected because importing `main.py` also runs its module-level code (building the whole `FastAPI` app, registering `CORSMiddleware`) just to reach one class definition - unnecessary for a terminal script, and a confusing thing to explain.
+
+**Reasoning:** `StyleAttributesIn` already mirrors the `CHECK` constraints in `db/schema.sql` exactly (see its original 2026-10-11 entry). Reusing the same class to validate an LLM response means there is exactly one place that defines "what counts as a valid style-attributes payload" - not two copies that could quietly drift apart.
+
+---
+
+## 2026-10-14 — LLM auto-tagging: official `google-genai` SDK, not raw HTTP
+
+**Decision:** `backend/llm_tagging.py` calls the Gemini API through Google's official `google-genai` SDK (`client.models.generate_content(...)`), not a hand-written HTTP request.
+
+**Rejected alternative:** Raw HTTP via `urllib.request` (the stdlib-only approach first proposed and the same reasoning already used elsewhere in this project to avoid a dependency, e.g. `psycopg` with raw SQL instead of an ORM). Explicitly rejected by the user for this specific case: the `psycopg`-vs-ORM choice gives up an abstraction over SQL she already knows and can be asked about in an interview; `urllib` here would mean hand-writing auth headers, response parsing, and retry/backoff logic that teaches nothing and is pure maintenance cost, for a feature she plans to run over 100+ books where transient failures (rate limits) are expected.
+
+**Correction to the original rationale, twice over:** Part of the reasoning for the SDK was "built-in retry." The SDK's public docs/README don't mention this (checked 2026-10-14), so a first pass here added a hand-written retry loop instead. Reading the **installed package's own source** (`google.genai._api_client`, same date) found that the SDK does have a real built-in retry mechanism (`tenacity`-based, covering HTTP `408/429/5xx` *and* network-level timeouts/connection errors) - it's just **off by default** (0 retries) unless `HttpRetryOptions` is passed in. The hand-written loop was replaced with this: `genai.Client(http_options={"timeout": ..., "retry_options": {...}})`, configured once at client construction. This is strictly better than the hand-rolled version - it also covers network-level timeouts, not just HTTP status codes.
+
+**A second, separate bug this surfaced:** no timeout was set on the Gemini call at all, so a non-responding request hung indefinitely with no error. `HttpOptions.timeout` (milliseconds) fixes this - `REQUEST_TIMEOUT_MS = 30_000` per attempt.
+
+**Reasoning:** The SDK's typed `APIError` (with a clear `.code`) makes it easy to distinguish rate-limiting from every other failure mode, which this feature's error-handling requirements depend on.
+
+**Version (checked 2026-10-14 against PyPI):** `google-genai==2.30.1` (requires Python ≥3.10; machine has 3.13).
+
+**Model (updated 2026-10-14, after a real run hit a `503` "high demand" error):** `gemini-3.8-flash` - a specific, pinned stable model, not the `gemini-flash-latest` alias originally used. Google's own docs state that alias "can be a stable, preview or experimental release" and is "hot-swapped with every new release" - i.e. it offered no guarantee of pointing at a stable model, which fits a `503` under real load. `gemini-3.8-flash` was the current "New Stable" flash model per Google's model docs as of this date. Pinning to a named model also means a future Google release can't silently change this script's behavior - upgrading the model is now a deliberate, visible edit to `MODEL_NAME`.
+
+---
+
+## 2026-10-14 — "Unknown book" is a result, not an error; comparison script never writes
+
+**Decision:** Two scripts, `tag_with_llm.py` (tags one book, calls `PUT /books/{id}/style-attributes`) and `compare_llm_tagging.py` (measures agreement against the 16 manually-tagged books), share `llm_tagging.py`'s `tag_book_with_llm()`. The prompt instructs Gemini to return `{"unknown_book": true}` if it isn't confident it knows the specific book; the function returns that as a normal outcome (`{"status": "unknown_book"}`), not an exception - genuine failures (`RateLimitError`, `InvalidResponseError`, `GeminiRequestError`) are raised separately. `compare_llm_tagging.py` never calls `PUT` at all - it only reads the existing manual tags and compares them against what the LLM returns in memory, so there is no mechanism by which it could overwrite manual data.
+
+**Rejected alternatives:**
+- **A separate table (e.g. `llm_style_attributes`) to persist every LLM attempt.** Rejected for now - the actual question being asked is "how much can this be trusted before filling a large catalog," not "keep a history of every model/prompt version tried." Revisit if comparing multiple models or prompt versions over time becomes a real need.
+- **Treating "unknown book" as an exception.** Rejected because it's an expected, valid outcome the prompt explicitly asks for, not a failure - raising it as an exception would make the normal "the model correctly declined to guess" path look identical to a real error in every caller's error handling.
+
+**Reasoning:** Not persisting the comparison run's output is the simplest possible way to guarantee manual tags are never touched - there's no overwrite path to protect against if nothing is ever written. Treating "unknown" as data instead of control flow keeps `tag_with_llm.py` and `compare_llm_tagging.py`'s error handling focused only on things that are actually wrong (rate limits, malformed JSON, API failures).
+
+---
+
+## 2026-10-14 — Measuring numeric agreement: exact match and "within ±1", reported separately
+
+**Decision:** `compare_llm_tagging.py` reports two percentages for each of the four 1-5 numeric attributes - exact match, and "within ±1" - rather than a single number. The three categorical attributes and three boolean attributes are reported as exact match only.
+
+**Rejected alternative:** Exact match only, for every attribute. Rejected because on a 1-5 scale, a one-point miss is a minor disagreement, not a failure - collapsing "off by one" and "off by four" into the same "wrong" bucket would make an LLM that is consistently close look exactly as unreliable as one that is wildly inconsistent, which is precisely the distinction this feature exists to surface before committing to auto-tagging ~150 books.
+
+**Reasoning:** Categorical and boolean attributes have no natural notion of "close" (e.g. there's no partial credit between `first` and `third_omniscient` POV), so exact match is the only meaningful measure there - mirrors how `similarity.py` already treats these attribute types (distance is 0 or 1, never in between).
