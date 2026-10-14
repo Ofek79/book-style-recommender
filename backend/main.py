@@ -10,10 +10,10 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 from psycopg.errors import UniqueViolation
 
 from db import get_connection
+from schemas import BookIn, StyleAttributesIn
 from similarity import similarity as compute_similarity
 
 # The application object that every endpoint is registered on and uvicorn runs.
@@ -31,35 +31,6 @@ app.add_middleware(
 )
 
 
-# Request body for POST /books. Field constraints reject an empty title
-# or author before the request reaches the database. language is
-# required here even though the database column is nullable (see
-# DECISIONS.md) - existing seed books predate the column, but every new
-# book added through this form must declare one.
-class BookIn(BaseModel):
-    title: str = Field(min_length=1)
-    author: str = Field(min_length=1)
-    genre: str | None = None
-    language: Literal["he", "en"]
-
-
-# Request body for PUT /books/{id}/style-attributes. The Literal and
-# Field(ge=..., le=...) constraints mirror the CHECK constraints in
-# db/schema.sql exactly, so an invalid value is rejected with a clear
-# 422 before it ever reaches the database.
-class StyleAttributesIn(BaseModel):
-    sentence_length: Literal["short", "medium", "long"]
-    description_density: int = Field(ge=1, le=5)
-    dialogue_ratio: Literal["low", "medium", "high"]
-    pov: Literal["first", "third_limited", "third_omniscient", "second"]
-    is_present_tense: bool
-    tone: int = Field(ge=1, le=5)
-    pacing: int = Field(ge=1, le=5)
-    vocabulary_complexity: int = Field(ge=1, le=5)
-    is_nonlinear: bool
-    has_humor: bool
-
-
 @app.get("/health")
 def health():
     # Checks that the server is alive and responding. Takes no input.
@@ -73,10 +44,12 @@ def health():
 # offset for paging. Returns a list of book summaries with a derived
 # is_tagged flag (true iff a book_style_attributes row exists for it).
 # Exists as the main entry point of the app: searching for a book.
+# Default limit is 100 - the whole catalog at this project's scale (see
+# DECISIONS.md) - not real pagination, which the frontend doesn't build.
 @app.get("/books")
 def list_books(
     search: str = "",
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=100, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
     with get_connection() as conn, conn.cursor() as cur:
