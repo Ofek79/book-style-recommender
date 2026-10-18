@@ -11,11 +11,22 @@ duplicate-safe upsert logic the tagging UI uses.
 """
 
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
 
 from llm_tagging import GeminiRequestError, InvalidResponseError, TransientServerError, tag_book_with_llm
+
+# Force UTF-8 regardless of whether stdout is a real console or a pipe
+# - see DECISIONS.md and compare_llm_tagging.py for why this matters
+# for Hebrew titles specifically.
+sys.stdout.reconfigure(encoding="utf-8")
+
+# Surfaces the SDK's own "retrying in N seconds" messages (normally
+# silent - see DECISIONS.md), so a retry shows visible activity instead
+# of looking identical to a stuck script.
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
 # Assumes the API server is running locally on its default port (see
 # README "Ports"). Not an env var - this script only ever talks to the

@@ -20,13 +20,16 @@ from schemas import StyleAttributesIn
 # not by main.py/uvicorn.
 load_dotenv()
 
-# A specific, pinned stable model - not the "gemini-flash-latest" alias.
-# Google's own docs describe that alias as hot-swappable to a preview or
-# experimental release at any time (checked 2026-10-14); a preview model
-# is exactly the kind of thing that returns 503 "high demand" under real
-# load, which is what prompted this switch. Update deliberately if a
-# newer stable model is released - never silently via an alias.
-MODEL_NAME = "gemini-3.8-flash"
+# A specific, pinned model - not the "gemini-flash-latest" alias (which
+# Google's docs describe as hot-swappable to a preview/experimental
+# release at any time - checked 2026-10-14).
+#
+# gemini-2.5-flash was tried (an older, established model, expected to
+# be under less load than a newly-released one) but Google's API
+# returned 404 for it: it's no longer available to new users, who are
+# pointed explicitly at gemini-3.8-flash instead. "Older and stable"
+# turned out not to mean "available" - see DECISIONS.md.
+MODEL_NAME = "models/gemini-3.8-flash"
 
 # Per-attempt timeout, in milliseconds (the unit google.genai.types.
 # HttpOptions.timeout uses). Without this, a call that never gets a
