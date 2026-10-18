@@ -277,13 +277,23 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 
 **Version (checked 2026-10-14 against PyPI):** `google-genai==2.30.1` (requires Python ≥3.10; machine has 3.13).
 
-**Model (updated 2026-10-14, after a real run hit a `503` "high demand" error):** `gemini-3.8-flash` - a specific, pinned stable model, not the `gemini-flash-latest` alias originally used. Google's own docs state that alias "can be a stable, preview or experimental release" and is "hot-swapped with every new release" - i.e. it offered no guarantee of pointing at a stable model, which fits a `503` under real load. `gemini-3.8-flash` was the current "New Stable" flash model per Google's model docs as of this date. Pinning to a named model also means a future Google release can't silently change this script's behavior - upgrading the model is now a deliberate, visible edit to `MODEL_NAME`.
+**Model, first change (2026-10-14, after a real run hit a `503` "high demand" error):** switched from the `gemini-flash-latest` alias to a specific, pinned model, `gemini-3.8-flash`. Google's own docs state that alias "can be a stable, preview or experimental release" and is "hot-swapped with every new release" - i.e. it offered no guarantee of pointing at a stable model, which fits a `503` under real load.
+
+**A note on verifying this, and a mistake in how it was first checked:** an earlier attempt to confirm `gemini-3.8-flash` was a real model name used a web-page fetch that turned out to fabricate parts of its answer (invented-looking entries like "Gemini 4 Argon" and "Nano Banana" alongside the real ones) - a tool reading a JS-rendered page can hallucinate rather than admit it can't see the content. That led to a wrong claim that the model name was probably invalid. The user then pulled the actual, current model list directly from Google's API (`GET https://generativelanguage.googleapis.com/v1beta/models`) and confirmed `gemini-3.8-flash` genuinely exists. Lesson logged here because it's a real instance of the general rule: a live API/CLI result is ground truth; a summarized fetch of a web page is not, especially for content that may be rendered client-side.
+
+**Model, second change (2026-10-18, deliberate choice, then reverted the same day):** switched to `models/gemini-2.5-flash` - an older, established, stable model, in preference to the newer `gemini-3.8-flash` - on the reasoning that a newly-released model draws more real-world traffic and is more likely to be under heavy load (plausibly part of why `gemini-3.8-flash` returned `503`s), while this task has no need for whatever extra capability the newest model offers.
+
+**Reverted immediately:** Google's API returned `404` for `gemini-2.5-flash` - it has been retired for new users, who are pointed explicitly at `gemini-3.8-flash` instead. Back to `models/gemini-3.8-flash`.
+
+**The actual lesson from this round-trip:** "older and stable" does not mean "currently available" - a model can be fully retired from new-user access while still being the technically more mature one. This was learned from the API's own `404`, not from documentation or reasoning about load - the kind of fact only a real call against the live service reveals. The `models/` prefix matches the `name` field format returned by the live API list and is one of the SDK's documented accepted forms for the `model` parameter.
+
+Pinning to a named model (rather than an alias) still means a future Google release can't silently change this script's behavior - upgrading the model is a deliberate, visible edit to `MODEL_NAME`, not something that happens underneath it.
 
 ---
 
 ## 2026-10-14 — "Unknown book" is a result, not an error; comparison script never writes
 
-**Decision:** Two scripts, `tag_with_llm.py` (tags one book, calls `PUT /books/{id}/style-attributes`) and `compare_llm_tagging.py` (measures agreement against the 16 manually-tagged books), share `llm_tagging.py`'s `tag_book_with_llm()`. The prompt instructs Gemini to return `{"unknown_book": true}` if it isn't confident it knows the specific book; the function returns that as a normal outcome (`{"status": "unknown_book"}`), not an exception - genuine failures (`RateLimitError`, `InvalidResponseError`, `GeminiRequestError`) are raised separately. `compare_llm_tagging.py` never calls `PUT` at all - it only reads the existing manual tags and compares them against what the LLM returns in memory, so there is no mechanism by which it could overwrite manual data.
+**Decision:** Two scripts, `tag_with_llm.py` (tags one book, calls `PUT /books/{id}/style-attributes`) and `compare_llm_tagging.py` (measures agreement against the 16 manually-tagged books), share `llm_tagging.py`'s `tag_book_with_llm()`. The prompt instructs Gemini to return `{"unknown_book": true}` if it isn't confident it knows the specific book; the function returns that as a normal outcome (`{"status": "unknown_book"}`), not an exception - genuine failures (`TransientServerError`, `InvalidResponseError`, `GeminiRequestError`) are raised separately. `compare_llm_tagging.py` never calls `PUT` at all - it only reads the existing manual tags and compares them against what the LLM returns in memory, so there is no mechanism by which it could overwrite manual data.
 
 **Rejected alternatives:**
 - **A separate table (e.g. `llm_style_attributes`) to persist every LLM attempt.** Rejected for now - the actual question being asked is "how much can this be trusted before filling a large catalog," not "keep a history of every model/prompt version tried." Revisit if comparing multiple models or prompt versions over time becomes a real need.
@@ -300,3 +310,37 @@ The frontend `.env` never contains a secret, so nothing sensitive can leak into 
 **Rejected alternative:** Exact match only, for every attribute. Rejected because on a 1-5 scale, a one-point miss is a minor disagreement, not a failure - collapsing "off by one" and "off by four" into the same "wrong" bucket would make an LLM that is consistently close look exactly as unreliable as one that is wildly inconsistent, which is precisely the distinction this feature exists to surface before committing to auto-tagging ~150 books.
 
 **Reasoning:** Categorical and boolean attributes have no natural notion of "close" (e.g. there's no partial credit between `first` and `third_omniscient` POV), so exact match is the only meaningful measure there - mirrors how `similarity.py` already treats these attribute types (distance is 0 or 1, never in between).
+
+---
+
+## 2026-10-18 — `compare_llm_tagging.py`: one bad book never stops the run; retries made visible
+
+**Decision:** Added after the scripts already existed, once a 35+ book run made the risk concrete. Two changes:
+- In the per-book loop, only `TransientServerError`, `InvalidResponseError`, `GeminiRequestError`, and an `unknown_book` result are caught and skipped (counted separately, printed, and the loop continues) - a failure fetching the book list itself from the local API still stops the script immediately, since that points at the server being broken for every book, not one bad book.
+- `logging.basicConfig(level=logging.INFO, ...)` is set in both `compare_llm_tagging.py` and `tag_with_llm.py`. The SDK's retry mechanism (see the `google-genai` SDK entry above) already logs a "retrying in N seconds" message via `tenacity.before_sleep_log` - it's just silent by default because nothing configures Python's `logging` module. One line surfaces it, so a book being retried after a `503` prints visible activity instead of looking identical to a hang.
+
+**Rejected alternative:** A hand-written progress indicator (e.g. a spinner or periodic "still working..." print) during the blocking Gemini call. Rejected because the SDK already emits exactly the right message at exactly the right moment (each retry attempt) - writing a separate mechanism would either duplicate that information or require threading to interleave with a call we don't control the internals of.
+
+**Reasoning:** At the scale this is meant to run at (35+ books, growing toward ~150), a single book the model doesn't recognize or that hits a persistent transient error is an expected, not exceptional, event - the run's value is the aggregate agreement numbers, which a single bad book shouldn't be able to zero out entirely.
+
+---
+
+## 2026-10-18 — `compare_llm_tagging.py` persists progress after every book; `--report-only` reprints without calling Gemini
+
+**Decision:** After every single book (not just at the end), `compare_llm_tagging.py` writes its accumulated `results`/`skipped`/`total_books` to `backend/llm_comparison_results.json` (gitignored - it's a local run's output, not source). `--report-only` loads that file and reprints the same percentage report with zero Gemini calls. `Ctrl+C` during a run is caught and still prints whatever was compared before stopping, instead of losing it to an unhandled `KeyboardInterrupt`.
+
+**What prompted this:** A real run hit Gemini's free-tier daily quota (20 requests/day) after 19 of 36 books. The aggregate percentages existed only in local variables inside the loop, printed once at the very end - so when the run stopped, there was no way to recover them, not even from the terminal transcript saved via `Tee-Object`, because the per-book print statements never included the comparison details (only "done"/"skipped"), only the final summary did.
+
+**Rejected alternative:** Printing the per-book comparison detail inline (so a saved terminal transcript would be self-sufficient), instead of a separate results file. Rejected because reconstructing percentages by re-parsing printed text is more fragile than reading them back as the data they actually are; a JSON file also makes `--report-only` a clean, direct feature rather than a parsing exercise.
+
+**Reasoning:** `print_report()` recomputes every percentage from the raw per-book `manual_attributes`/`llm_attributes` pairs each time it's called (whether from a live run or a reloaded file), rather than trusting separately-maintained running counters that could drift from the raw data - one source of truth for the numbers either way.
+
+---
+
+## 2026-10-18 — Hebrew titles garbled in `Tee-Object` output: a display issue, verified, not a data issue
+
+**Decision:** Both LLM scripts call `sys.stdout.reconfigure(encoding="utf-8")` at startup, so stdout is UTF-8 whether it's a real console or a redirected pipe.
+
+**What was actually checked (not assumed):** A Hebrew book title was fetched straight from the API and inspected directly - its Unicode code points (e.g. `0x5d0`, `0x5e0`...) and its UTF-8 byte encoding were both correct Hebrew, independent of any terminal. This confirms the string in memory - and therefore whatever the SDK sends to Gemini over HTTPS as UTF-8 JSON - was never corrupted. The garbling the user saw was reproduced separately: Python's `sys.stdout.encoding`, when stdout is not an interactive console (exactly the case for `| Tee-Object`), is not guaranteed to be UTF-8 on Windows - it can fall back to a different encoding depending on the environment, independently of the data being piped through it.
+
+**Reasoning:** Forcing UTF-8 on `stdout` removes the ambiguity regardless of console vs. pipe, so both the live terminal output and anything saved via `Tee-Object`/redirection use one known encoding. Live *display* legibility in the PowerShell window itself can still depend on the console's own configured encoding (e.g. `chcp 65001`) - outside what a Python script controls - but the saved file's bytes are now correct either way.
