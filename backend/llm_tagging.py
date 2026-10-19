@@ -31,6 +31,17 @@ load_dotenv()
 # turned out not to mean "available" - see DECISIONS.md.
 MODEL_NAME = "models/gemini-3.8-flash"
 
+# The model's own default is 1.0 (confirmed via client.models.get() on
+# 2026-10-19, not assumed - see DECISIONS.md). 0 makes generation
+# near-deterministic (greedy decoding: always the single most likely
+# next token) instead of sampling - this is a structured classification
+# task with no benefit from creative variation, and EVALUATION.md
+# measured 7-22% of answers changing run to run at the default. 0
+# reduces that noise; it does not fix a genuine miscalibration (e.g.
+# pacing's upward bias) - it would just make that bias more consistent,
+# not smaller.
+GENERATION_TEMPERATURE = 0
+
 # Per-attempt timeout, in milliseconds (the unit google.genai.types.
 # HttpOptions.timeout uses). Without this, a call that never gets a
 # response just hangs forever - found by testing this exact script
@@ -72,17 +83,25 @@ class GeminiRequestError(Exception):
     pass
 
 
-# Takes a book's title and author. Returns a plain-English prompt asking
-# for exactly the 10 style attributes as JSON, with every allowed value
-# spelled out (matching StyleAttributesIn exactly), or a fixed "unknown
-# book" response if the model isn't confident it knows this specific
-# book. Exists as its own function so the prompt text is easy to find
-# and edit without touching the request/parsing logic.
-def build_prompt(title, author):
+# Takes a book's title and author, and optionally the work's original
+# title (for a translated edition - see EVALUATION.md: Hebrew-titled
+# translations were being missed as "unknown_book" when the model only
+# recognized the book under its original title). Returns a plain-English
+# prompt asking for exactly the 10 style attributes as JSON, with every
+# allowed value spelled out (matching StyleAttributesIn exactly), or a
+# fixed "unknown book" response if the model isn't confident it knows
+# this specific book. Exists as its own function so the prompt text is
+# easy to find and edit without touching the request/parsing logic.
+def build_prompt(title, author, title_original=None):
+    original_title_line = (
+        f'\nThis is a translated edition; the work\'s original title is "{title_original}".\n'
+        if title_original
+        else ""
+    )
     return f"""You are analyzing the writing style of a real, published novel.
 
 Book: "{title}" by {author}
-
+{original_title_line}
 If you are not highly confident you know this specific, real book by this
 exact title and author, respond with exactly this JSON and nothing else:
 {{"unknown_book": true}}
@@ -98,7 +117,7 @@ and no others:
 - tone: integer 1-5 - 1 = light/humorous tone, 5 = dark/somber tone.
 - pacing: integer 1-5 - 1 = slow and contemplative, 5 = fast-paced and event-driven.
 - vocabulary_complexity: integer 1-5 - 1 = simple, plain language, 5 = complex, literary vocabulary.
-- is_nonlinear: boolean - true if the plot structure is nonlinear (time jumps, parallel storylines), false if linear.
+- is_nonlinear: boolean - true ONLY if the underlying timeline is told out of chronological order (e.g. flashbacks that interrupt the main story, opening near/after the ending and then explaining how it got there, or multiple time periods from different eras). False if events unfold in chronological order - even if the book alternates between multiple characters' points of view or intercuts short chapters from different characters happening around the same time. Alternating POV by itself is NOT nonlinear; only a scrambled or reordered timeline is.
 - has_humor: boolean - true if the book has a noticeably humorous or ironic tone.
 
 Respond with the JSON object only - no markdown, no explanation, no code fences."""
@@ -123,7 +142,8 @@ def parse_json_response(raw_text):
         raise InvalidResponseError(f"Response was not valid JSON: {error}", raw_text)
 
 
-# Takes a book's title and author. Calls Gemini and returns one of two
+# Takes a book's title and author, and optionally its original title
+# (see build_prompt above). Calls Gemini and returns one of two
 # outcomes: {"status": "tagged", "attributes": {...}} with all 10 style
 # attributes validated against the exact same rules the API enforces
 # (schemas.StyleAttributesIn), or {"status": "unknown_book"} if the
@@ -131,7 +151,7 @@ def parse_json_response(raw_text):
 # InvalidResponseError, or GeminiRequestError on failure - see the
 # exception classes above for what each means. This is the one function
 # both CLI scripts call; neither talks to Gemini directly.
-def tag_book_with_llm(title, author):
+def tag_book_with_llm(title, author, title_original=None):
     client = genai.Client(
         api_key=os.environ["GEMINI_API_KEY"],
         http_options={
@@ -144,13 +164,13 @@ def tag_book_with_llm(title, author):
             },
         },
     )
-    prompt = build_prompt(title, author)
+    prompt = build_prompt(title, author, title_original)
 
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
             contents=prompt,
-            config={"response_mime_type": "application/json"},
+            config={"response_mime_type": "application/json", "temperature": GENERATION_TEMPERATURE},
         )
     except errors.APIError as error:
         # The SDK already retried internally (see RETRY_ATTEMPTS above)

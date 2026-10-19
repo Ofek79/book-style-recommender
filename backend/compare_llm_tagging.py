@@ -16,9 +16,8 @@ import argparse
 import json
 import logging
 import sys
-import urllib.error
-import urllib.request
 
+from api_client import get_book, list_books
 from llm_tagging import GeminiRequestError, InvalidResponseError, TransientServerError, tag_book_with_llm
 from schemas import StyleAttributesIn
 
@@ -33,9 +32,6 @@ sys.stdout.reconfigure(encoding="utf-8")
 # silent - see DECISIONS.md), so a book being retried shows visible
 # activity instead of looking identical to a stuck script.
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-
-API_BASE_URL = "http://localhost:8000"
-REQUEST_TIMEOUT_SECONDS = 10
 
 # Where per-book results are saved after every book (see module
 # docstring) - lets a later `--report-only` run reprint the same report
@@ -56,29 +52,11 @@ ATTRIBUTE_NAMES = list(StyleAttributesIn.model_fields.keys())
 # Exists so the comparison set always matches whatever the API
 # currently considers "tagged", rather than a separately-maintained list.
 def fetch_tagged_books():
-    try:
-        with urllib.request.urlopen(
-            f"{API_BASE_URL}/books?limit=100", timeout=REQUEST_TIMEOUT_SECONDS
-        ) as response:
-            summaries = json.load(response)
-    except urllib.error.URLError as error:
-        sys.exit(f"Could not reach the API server at {API_BASE_URL}: {error.reason}")
-
+    summaries = list_books(limit=100)
     tagged_books = []
     for summary in summaries:
-        if not summary["is_tagged"]:
-            continue
-        try:
-            with urllib.request.urlopen(
-                f"{API_BASE_URL}/books/{summary['id']}", timeout=REQUEST_TIMEOUT_SECONDS
-            ) as response:
-                tagged_books.append(json.load(response))
-        except (urllib.error.HTTPError, urllib.error.URLError) as error:
-            # Unlike a single book failing the LLM call, the local API
-            # itself failing mid-run points at a real server problem,
-            # not something to skip past - every other book would
-            # likely fail the same way.
-            sys.exit(f"GET /books/{summary['id']} failed: {error}")
+        if summary["is_tagged"]:
+            tagged_books.append(get_book(summary["id"]))
     return tagged_books
 
 
@@ -178,7 +156,7 @@ def main():
         for index, book in enumerate(books, start=1):
             print(f"[{index}/{len(books)}] {book['title']} by {book['author']} ...", flush=True)
             try:
-                result = tag_book_with_llm(book["title"], book["author"])
+                result = tag_book_with_llm(book["title"], book["author"], book.get("title_original"))
             except (TransientServerError, InvalidResponseError, GeminiRequestError) as error:
                 print(f"  skipped: {error}")
                 skipped.append({"title": book["title"], "reason": str(error)})

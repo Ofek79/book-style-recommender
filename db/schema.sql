@@ -10,6 +10,13 @@ CREATE TABLE books (
     open_library_id TEXT UNIQUE NOT NULL,
     title TEXT NOT NULL,
     author TEXT NOT NULL,
+    -- The work's original title, when `title` is a translation (e.g. a
+    -- Hebrew edition). Nullable - only needed for translated books, and
+    -- existing rows predate this column anyway. Sent to the LLM
+    -- auto-tagging prompt alongside `title` so a well-known book isn't
+    -- missed just because the model only recognizes it by its original
+    -- title (see EVALUATION.md and DECISIONS.md).
+    title_original TEXT,
     genre TEXT,
     -- Nullable: existing seed books predate this column and have no
     -- value to backfill (see DECISIONS.md). Required by the add-book

@@ -344,3 +344,95 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 **What was actually checked (not assumed):** A Hebrew book title was fetched straight from the API and inspected directly - its Unicode code points (e.g. `0x5d0`, `0x5e0`...) and its UTF-8 byte encoding were both correct Hebrew, independent of any terminal. This confirms the string in memory - and therefore whatever the SDK sends to Gemini over HTTPS as UTF-8 JSON - was never corrupted. The garbling the user saw was reproduced separately: Python's `sys.stdout.encoding`, when stdout is not an interactive console (exactly the case for `| Tee-Object`), is not guaranteed to be UTF-8 on Windows - it can fall back to a different encoding depending on the environment, independently of the data being piped through it.
 
 **Reasoning:** Forcing UTF-8 on `stdout` removes the ambiguity regardless of console vs. pipe, so both the live terminal output and anything saved via `Tee-Object`/redirection use one known encoding. Live *display* legibility in the PowerShell window itself can still depend on the console's own configured encoding (e.g. `chcp 65001`) - outside what a Python script controls - but the saved file's bytes are now correct either way.
+
+---
+
+## 2026-10-19 — `books.title_original`: fixes Hebrew-title `unknown_book` false negatives
+
+**Decision:** Added a nullable `title_original` column to `books`. Optional on the add-book form and in `BookIn`; when present, `llm_tagging.build_prompt()` includes it as an extra line telling the model this is a translated edition and naming the original title.
+
+**What prompted this:** `EVALUATION.md`'s first run found all 7 `unknown_book` results were Hebrew-titled books (0 of 29 compared books were), including **קרבת דם** by הרלן קובן (Harlan Coben) - a well-known author the model should recognize, just not necessarily under a Hebrew translated title it may never have seen paired with that author's name. Giving the model the original title directly addresses the actual observed failure mode, rather than guessing at a fix.
+
+**Rejected alternative:** Asking the model to translate/guess the original title itself, instead of storing and supplying it. Rejected because it reintroduces the exact problem being solved - if the model could reliably infer the original title from a Hebrew one, it would already have recognized the book without help.
+
+**Reasoning:** Nullable and optional for the same reason `genre`/`language` are - most books (anything not a translation) never need it, and existing rows predate the column. Same migration pattern as `language`: `db/schema.sql` updated for future clean installs, `ALTER TABLE` run manually against the live database.
+
+---
+
+## 2026-10-19 — `is_nonlinear` prompt wording tightened: alternating POV is not nonlinear
+
+**Decision:** `llm_tagging.py`'s prompt now explicitly says alternating point of view between short chapters is **not** `is_nonlinear` by itself - only a timeline told out of chronological order (flashbacks interrupting the main story, starting near the end and explaining how it got there, multiple distinct eras) counts.
+
+**What the data showed:** `is_nonlinear` had 45% overall agreement in `EVALUATION.md`'s first run - worse than guessing on a binary attribute. Splitting by language found the real pattern: English-titled books agreed 76% of the time; Hebrew-titled books agreed **0/12**, and in 10 of those 12, the model said `true` where the manual tag said `false`. The Hebrew catalog is mostly commercial thrillers (Harlan Coben, Steve Cavanagh, Alex Michaelides) that commonly alternate short chapters between characters' POVs in otherwise chronological order - exactly the structure the old wording ("parallel storylines") was ambiguous enough to let the model read as "nonlinear." The two books both tagger and model agreed were `true` (*Slaughterhouse-Five*, *One Hundred Years of Solitude*) are genuinely timeline-scrambled literary novels, not POV-alternating thrillers - confirming the manual tagging's actual working definition was narrower than the old prompt wording implied.
+
+**Rejected alternative:** Leaving the manual tagging's definition unquestioned and assuming the model is simply unreliable on this attribute. Rejected because the mismatch wasn't random noise (which would show up roughly evenly across languages/genres) - it was fully concentrated in one structural pattern (POV alternation in chronological order), which is a prompt-wording problem, not a capability problem.
+
+**Reasoning:** The fix targets the specific, evidenced failure mode (confusing POV-alternation with timeline-reordering) rather than a general reminder to "try harder" - the kind of change that should be checked against a fresh run of `compare_llm_tagging.py` rather than assumed to have worked.
+
+---
+
+## 2026-10-19 — Evaluation methodology: a single `compare_llm_tagging.py` run is noisy; use 2-3 runs and a range
+
+**Decision:** A single run's per-attribute percentage from `compare_llm_tagging.py` is treated as a rough estimate, not a precise score. See `EVALUATION.md`'s "Non-determinism finding" and "Methodology note" for the full evidence and the standing recommendation (run 2-3 times, look at the range, not one number).
+
+**What prompted this:** Comparing two runs over the same 29-ish books found 7-15% of individual answers changed between calls on attributes whose prompt wording was never touched, plus 2 books flipping each direction between "recognized" and `unknown_book` with zero change to their data. This fully explained an apparent drop in five metrics between runs that first looked like a regression.
+
+**Reasoning:** Treating a single run as ground truth risks reading real sampling noise as a prompt change having helped or hurt, in either direction - the fix for `is_nonlinear` happened to be large enough to stand out from that noise, but a smaller, real effect could easily be missed or misattributed without this caveat in place.
+
+---
+
+## 2026-10-19 — `temperature=0` for LLM tagging calls
+
+**Decision:** `llm_tagging.py` now sets `temperature: 0` (near-deterministic, greedy decoding) on every `generate_content` call, via a named `GENERATION_TEMPERATURE` constant.
+
+**What the default actually was, verified against the live API, not assumed:** the code never set `temperature` at all, so it ran at the model's own default. Rather than trust a remembered or guessed number, this was checked directly with `client.models.get(model="models/gemini-3.8-flash")` on 2026-10-19 (the same "verify against the live API" discipline as the model-name mixup earlier this session) - the model's documented default is **`temperature=1.0`** (also: `max_temperature=2.0`, `top_p=0.95`, `top_k=64`).
+
+**Rejected alternative:** Leaving the default as-is and only relying on the "run 2-3 times, use a range" methodology (previous entry) to manage noise. Rejected because this is a structured classification task (10 fixed-shape fields from a title/author) with no benefit from sampling variety the way open-ended creative generation has - lower temperature is standard practice for this kind of task, and reducing the noise at its source is better than only compensating for it statistically afterward.
+
+**Reasoning, and the limit of what this fixes:** `temperature=0` should sharply cut the 7-22% run-to-run answer drift measured in `EVALUATION.md`, but Google's own docs note it doesn't guarantee *strict* determinism (minor backend-level variation can remain) - so the multi-run methodology from the previous entry is weakened in importance, not eliminated. It also does not fix genuine miscalibration, such as `pacing`'s measured upward bias - it would make that same bias appear consistently instead of averaging out across some high and some low runs. Noise and bias are different problems; this addresses only the former.
+
+---
+
+## 2026-10-19 — `backend/api_client.py`: shared HTTP client for the three terminal scripts
+
+**Decision:** `tag_with_llm.py` and `compare_llm_tagging.py`'s duplicate `urllib`-based GET/POST/PUT plumbing (`API_BASE_URL`, timeout, error handling) was pulled into a new `backend/api_client.py`, alongside two new functions needed by the upcoming bulk-add script: `find_book_by_title_author()` and `create_book()` (the latter returns `None` on a `409`, treating "this book already exists" as a normal outcome for a caller to branch on, not an error to crash on).
+
+**Rejected alternative:** Leaving the duplication in place and writing a third copy of the same HTTP helpers directly into the new bulk-add script. Rejected once a third script needed the exact same plumbing - the same threshold already used earlier for extracting `schemas.py` out of `main.py`.
+
+**Reasoning:** Matches rule 4 (prefer simple and clear) by having exactly one place that knows how to talk to this project's own API over HTTP, verified against the running server after the refactor (same `--report-only` output before and after, plus a live `create_book`/`find_book_by_title_author`/duplicate-`409` check against a disposable test row).
+
+---
+
+## 2026-10-19 — `add_books_bulk.py`: the database is the resume state, no separate progress file
+
+**Decision:** `backend/add_books_bulk.py` reads `backend/books_to_add.json` (100 curated books, data kept separate from the script - same split as `db/seed.sql` vs. the backend code) and for each one: creates it if it doesn't exist (`create_book()`, via `api_client.py`), finds the existing row via `find_book_by_title_author()` if it does (a `409` from `create_book`), then tags it only if it isn't already tagged. A book the model doesn't recognize is still added with its metadata, just left untagged - same as adding a book through the tagging UI and not tagging it yet. Nothing aborts the whole run except the local API itself being unreachable; a single book's tagging failure is logged and skipped. Prints a final summary (created / already existed / tagged / skipped-with-reasons) since a 100-book run can't be tracked by eye.
+
+**Rejected alternative:** A separate progress/state file (like `compare_llm_tagging.py`'s `RESULTS_PATH`) to track what's been done, so a resumed run knows what to skip. Rejected because the database already answers both questions this script needs ("does this book exist" and "is it tagged") - a second, separately-maintained record of the same facts could drift from the database and would just be re-deriving what's already there.
+
+**Reasoning:** This makes the script safe to run repeatedly over the same list - across multiple days if a daily API quota is the limiting factor, for instance - with no special "resume" flag or state to manage: a re-run only ever does the work still left to do, verified directly (ran it against 2 real already-tagged books and confirmed zero Gemini calls were made, only the create→409→find→already-tagged→skip path).
+
+---
+
+## 2026-10-19 — `books.author` stays in its original (usually English) script, even when `title` is Hebrew
+
+**Decision:** Project-wide policy, not just for this batch: `author` is never transliterated into Hebrew, regardless of what language `title` is in. For a translated book, `title` is the Hebrew edition's title, `title_original` is the work's original title, and `author` stays in the author's original-script name (e.g. "Harlan Coben", not "הרלן קובן").
+
+**What prompted this:** Observed directly while debugging `unknown_book` results earlier in this project: changing a book's `author` field from a Hebrew transliteration to the author's original English name measurably helped Gemini recognize some books it had been missing. A Hebrew transliteration of a well-known author's name is an extra layer of indirection the model has to reverse before it can match its training data - an unnecessary obstacle to the exact recognition problem `title_original` already exists to solve.
+
+**Rejected alternative:** Transliterating `author` to Hebrew to match the rest of a Hebrew-language catalog entry, for visual/linguistic consistency with `title`. Rejected because it actively works against LLM auto-tagging reliability for a cosmetic consistency gain - and the frontend already reads fine with an English author name next to a Hebrew title (same pattern several existing catalog entries already used).
+
+**Reasoning:** Recognition accuracy is a bigger concern than visual uniformity on a field most users skim past - and this is a case where the two goals directly conflict, not just a case of no established convention either way.
+
+**Applied retroactively:** `backend/books_to_add.json`'s 57 Hebrew-titled entries all keep `author` in its original script - verified directly (zero Hebrew characters found in any `author` field across the file).
+
+---
+
+## 2026-10-19 — Bug: `add_books_bulk.py` crashed on `KeyError: 'is_tagged'` for every newly-created book
+
+**What happened:** `POST /books`'s response never included `is_tagged` - it's a field only `GET /books` and `GET /books/{id}` compute, via a join against `book_style_attributes` that's meaningless for a row that was just inserted. `add_books_bulk.py` treated the dict from `create_book()` (a fresh `201`) and the dict from `find_book_by_title_author()` (a `409` lookup, backed by `GET /books`) as interchangeable and read `book["is_tagged"]` on both - crashing immediately on the first newly-created book in a real run, right after that row was successfully inserted.
+
+**Why the pre-release testing missed this:** The verification run before shipping this script only exercised 2 already-cataloged, already-tagged books - the `409`→`find_book_by_title_author` branch, where `is_tagged` genuinely exists. That was deliberately the zero-Gemini-cost path to test for free; the create-a-new-book branch (where the bug actually lived) was never exercised because doing so live would have spent real Gemini quota, and it was wrongly treated as an acceptable gap given the other two scripts' extensive existing tagging-logic tests. It should have been tested with `tag_book_with_llm` stubbed out instead, exactly as it was once the bug was found - no Gemini call was needed to catch this.
+
+**Fix:** The `is_tagged` check now only happens in the "book already existed" branch, where the field is genuinely present. A newly created book is always untagged by construction (no `book_style_attributes` row can exist yet for an id that didn't exist a moment ago) - no check is needed there at all. Verified with a disposable new test book (the exact path that crashed before) and a stubbed `tag_book_with_llm`, so the fix could be confirmed with zero Gemini cost - plus a re-check of the already-tagged path to confirm the fix didn't regress it.
+
+**Reasoning:** The real lesson isn't the one-line fix - it's that "zero-cost to test" and "exercises the actual new logic" are different requirements, and this script's new logic (the create-or-find branch) was exactly the part the cheap test skipped. Stubbing the LLM call (as done for the fix's own verification) gets both at once and should have been the original test's approach too.
