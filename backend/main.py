@@ -90,7 +90,7 @@ def get_book(book_id: int):
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, title, author, genre, cover_url, open_library_id, created_at
+            SELECT id, title, author, title_original, genre, cover_url, open_library_id, created_at
             FROM books WHERE id = %(book_id)s
             """,
             {"book_id": book_id},
@@ -214,14 +214,14 @@ def get_recommendations(
     ]
 
 
-# Takes a new book's title, author, optional genre, and language (see
-# BookIn above for validation). Returns the created row. Exists so books
-# can be added through the tagging UI without hand-written SQL.
-# open_library_id is a generated placeholder, not a real Open Library id
-# (see DECISIONS.md) - this book has no real metadata source yet.
-# 409 if a book with the same title and author (ignoring case and
-# surrounding whitespace) already exists - see the unique index in
-# db/schema.sql, which is what actually catches this.
+# Takes a new book's title, author, optional original title, optional
+# genre, and language (see BookIn above for validation). Returns the
+# created row. Exists so books can be added through the tagging UI
+# without hand-written SQL. open_library_id is a generated placeholder,
+# not a real Open Library id (see DECISIONS.md) - this book has no real
+# metadata source yet. 409 if a book with the same title and author
+# (ignoring case and surrounding whitespace) already exists - see the
+# unique index in db/schema.sql, which is what actually catches this.
 @app.post("/books", status_code=201)
 def create_book(book: BookIn):
     placeholder_open_library_id = f"manual-{uuid4().hex}"
@@ -229,14 +229,15 @@ def create_book(book: BookIn):
         try:
             cur.execute(
                 """
-                INSERT INTO books (open_library_id, title, author, genre, language)
-                VALUES (%(open_library_id)s, %(title)s, %(author)s, %(genre)s, %(language)s)
-                RETURNING id, open_library_id, title, author, genre, language, cover_url, created_at
+                INSERT INTO books (open_library_id, title, author, title_original, genre, language)
+                VALUES (%(open_library_id)s, %(title)s, %(author)s, %(title_original)s, %(genre)s, %(language)s)
+                RETURNING id, open_library_id, title, author, title_original, genre, language, cover_url, created_at
                 """,
                 {
                     "open_library_id": placeholder_open_library_id,
                     "title": book.title,
                     "author": book.author,
+                    "title_original": book.title_original,
                     "genre": book.genre,
                     "language": book.language,
                 },

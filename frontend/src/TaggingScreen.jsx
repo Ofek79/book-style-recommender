@@ -56,7 +56,13 @@ const LANGUAGE_OPTIONS = [
 
 export default function TaggingScreen() {
   // New-book form fields and its request status.
-  const [newBook, setNewBook] = useState({ title: "", author: "", genre: "", language: "he" });
+  const [newBook, setNewBook] = useState({
+    title: "",
+    author: "",
+    titleOriginal: "",
+    genre: "",
+    language: "he",
+  });
   const [addBookStatus, setAddBookStatus] = useState("idle"); // idle | loading | error | success
 
   // Untagged books: null before the first load, [] if none are left.
@@ -107,6 +113,7 @@ export default function TaggingScreen() {
         body: JSON.stringify({
           title: newBook.title,
           author: newBook.author,
+          title_original: newBook.titleOriginal || null,
           genre: newBook.genre || null,
           language: newBook.language,
         }),
@@ -116,7 +123,7 @@ export default function TaggingScreen() {
         return;
       }
       if (!response.ok) throw new Error("create book request failed");
-      setNewBook({ title: "", author: "", genre: "", language: "he" });
+      setNewBook({ title: "", author: "", titleOriginal: "", genre: "", language: "he" });
       setAddBookStatus("success");
       loadUntaggedBooks();
     } catch {
@@ -186,6 +193,14 @@ export default function TaggingScreen() {
             required
             value={newBook.author}
             onChange={(event) => setNewBook({ ...newBook, author: event.target.value })}
+          />
+        </label>
+        <label>
+          כותרת מקורית (אופציונלי, לספר מתורגם)
+          <input
+            type="text"
+            value={newBook.titleOriginal}
+            onChange={(event) => setNewBook({ ...newBook, titleOriginal: event.target.value })}
           />
         </label>
         <label>

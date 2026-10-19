@@ -72,7 +72,9 @@ Added on request, outside the original list (all in `DECISIONS.md`):
 `DECISIONS.md`, this file, `frontend/vite.config.js`, `frontend/.env.example`,
 `.gitattributes`, `db/schema.sql`, `db/seed.sql`, `backend/db.py`,
 `backend/similarity.py`, `HANDOFF.md`, `backend/requirements-dev.txt`,
-`backend/test_similarity.py`.
+`backend/test_similarity.py`, `backend/schemas.py`, `backend/llm_tagging.py`,
+`backend/tag_with_llm.py`, `backend/compare_llm_tagging.py`, `EVALUATION.md`,
+`backend/api_client.py`, `backend/books_to_add.json`, `backend/add_books_bulk.py`.
 
 **Environment files:** two separate `.env` files — root (`POSTGRES_*`,
 `DATABASE_URL`, for docker-compose + backend) and `frontend/.env`

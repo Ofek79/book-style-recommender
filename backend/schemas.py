@@ -19,6 +19,11 @@ from pydantic import BaseModel, Field
 class BookIn(BaseModel):
     title: str = Field(min_length=1)
     author: str = Field(min_length=1)
+    # The work's original title, if `title` is a translation (e.g. a
+    # Hebrew edition of an English book). Optional - only relevant for
+    # translated books; helps LLM auto-tagging recognize a well-known
+    # book it wouldn't otherwise connect to its translated title.
+    title_original: str | None = None
     genre: str | None = None
     language: Literal["he", "en"]
 
