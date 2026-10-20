@@ -53,8 +53,11 @@ def main():
         print("The model does not recognize this book with confidence. Nothing was saved.")
         return
 
-    saved = save_style_attributes(book_id, result["attributes"])
-    print(f"Saved. tagged_at = {saved['tagged_at']}")
+    # tagged_by is request metadata, not a style attribute, so it's added
+    # here at save time rather than returned by tag_book_with_llm (see
+    # StyleAttributesPut in schemas.py).
+    saved = save_style_attributes(book_id, {**result["attributes"], "tagged_by": "llm"})
+    print(f"Saved. tagged_by = {saved['tagged_by']}, tagged_at = {saved['tagged_at']}")
     for key, value in result["attributes"].items():
         print(f"  {key}: {value}")
 

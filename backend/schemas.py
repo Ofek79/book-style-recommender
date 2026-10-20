@@ -28,19 +28,32 @@ class BookIn(BaseModel):
     language: Literal["he", "en"]
 
 
-# Request body for PUT /books/{id}/style-attributes, and the shape an
-# LLM-tagged response is validated against before it's trusted. The
-# Literal and Field(ge=..., le=...) constraints mirror the CHECK
-# constraints in db/schema.sql exactly, so an invalid value is rejected
-# with a clear error before it ever reaches the database.
+# The 10 style attributes, and nothing else. The shape an LLM-tagged
+# response is validated against before it's trusted, and the base of
+# StyleAttributesPut below. The Literal and Field(ge=..., le=...)
+# constraints mirror the CHECK constraints in db/schema.sql exactly, so
+# an invalid value is rejected with a clear error before it ever
+# reaches the database.
 class StyleAttributesIn(BaseModel):
     sentence_length: Literal["short", "medium", "long"]
     description_density: int = Field(ge=1, le=5)
     dialogue_ratio: Literal["low", "medium", "high"]
     pov: Literal["first", "third_limited", "third_omniscient", "second"]
-    is_present_tense: bool
+    # None means "unknown" (NULL in the database). Still required as a
+    # key - a caller must send it, even if the value is null - so a
+    # forgotten field is an error, not a silent unknown. Tagged manually
+    # only (see DECISIONS.md).
+    is_present_tense: bool | None
     tone: int = Field(ge=1, le=5)
     pacing: int = Field(ge=1, le=5)
     vocabulary_complexity: int = Field(ge=1, le=5)
     is_nonlinear: bool
     has_humor: bool
+
+
+# Request body for PUT /books/{id}/style-attributes: the 10 style
+# attributes plus who is tagging. tagged_by lives here and not in
+# StyleAttributesIn because it's request metadata, not a style
+# attribute - the LLM response never has it (see DECISIONS.md).
+class StyleAttributesPut(StyleAttributesIn):
+    tagged_by: Literal["manual", "llm"]

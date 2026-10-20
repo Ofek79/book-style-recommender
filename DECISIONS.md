@@ -436,3 +436,42 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 **Fix:** The `is_tagged` check now only happens in the "book already existed" branch, where the field is genuinely present. A newly created book is always untagged by construction (no `book_style_attributes` row can exist yet for an id that didn't exist a moment ago) - no check is needed there at all. Verified with a disposable new test book (the exact path that crashed before) and a stubbed `tag_book_with_llm`, so the fix could be confirmed with zero Gemini cost - plus a re-check of the already-tagged path to confirm the fix didn't regress it.
 
 **Reasoning:** The real lesson isn't the one-line fix - it's that "zero-cost to test" and "exercises the actual new logic" are different requirements, and this script's new logic (the create-or-find branch) was exactly the part the cheap test skipped. Stubbing the LLM call (as done for the fix's own verification) gets both at once and should have been the original test's approach too.
+
+---
+
+## 2026-10-20 — `is_present_tense`: manual only, `NULL` (unknown) for LLM-tagged books
+
+**Decision:** `book_style_attributes.is_present_tense` becomes nullable, and `NULL` means "unknown". The LLM no longer tags it: the attribute is removed from the prompt, and `tag_book_with_llm()` always returns `None` for it. The 100 books tagged by the bulk LLM run have their value set to `NULL`. The 36 manual tags are kept. In `similarity.py`, an attribute that is `None` on either book is left out of the score entirely (out of both the distance sum and the weight total), so the score stays a weighted average, just over the attributes both books actually have. It never appears in the rationale either. In the tagging UI, the checkbox becomes a three-option select (past / present / unknown), default "unknown".
+
+**What prompted this:** Manually-tagged books were recommended almost only other manually-tagged books. Diagnosis traced most of that split to `is_present_tense` (and `is_nonlinear`). On the same 29 books, all 8 disagreements were manual = present, LLM = past. The tagger checked all 8 against the text: all present. A follow-up experiment showed `title_original` doesn't fix it (0/8 with it). The model recognizes the books but doesn't know their tense, and defaults to past. Full evidence in `EVALUATION.md`.
+
+**Rejected alternatives:**
+- **A sentinel value (e.g. a `TEXT` column with `'unknown'`).** Breaks the boolean type for no gain. `NULL` is SQL's standard way of saying "no known value".
+- **Deriving "unknown" from who tagged the row (`tagged_by = 'llm'`, next entry) instead of storing `NULL`.** It would hard-code "LLM rows never have a tense" into the similarity logic, and wouldn't cover a manual tagger who genuinely doesn't know. `NULL` describes the value itself.
+- **Dropping the attribute entirely.** Throws away 36 manual values that are correct.
+- **Rewording the prompt.** Wording can't give the model knowledge it doesn't have. The experiment showed the failure persists even when the model recognizes the book.
+- **Scoring an unknown attribute as a neutral 0.5 distance.** Puts an invented number into every affected score, and is harder to explain than simply not counting what isn't known.
+- **Keeping the checkbox in the UI.** A checkbox has only two states. Opening an LLM-tagged book with `NULL` would show it unchecked, and saving would silently write `false` - exactly the bad data being removed.
+
+**Cost accepted:** a pair involving an LLM-tagged book is now scored on 9 attributes, not 10. `is_present_tense` was a frequent source of difference, so those pairs score slightly higher than before. This is measured after implementing (see `EVALUATION.md`), not assumed.
+
+**Reasoning:** A missing value is better than a wrong one. Wrong values were actively distorting recommendations along tagger lines. "Unknown" removes the distortion without pretending to know something nobody measured. Default "unknown" in the UI keeps the same rule for manual tagging: forgetting to choose leaves a gap, not a false value.
+
+---
+
+## 2026-10-20 — `book_style_attributes.tagged_by`: who tagged the row is stored on the row
+
+**Decision:** New column `tagged_by TEXT NOT NULL CHECK (tagged_by IN ('manual', 'llm'))`, with no default. It is a required field in a new `StyleAttributesPut` model, which extends `StyleAttributesIn` and is used only as the body of `PUT /books/{id}/style-attributes`, so every `PUT` must say who is tagging: the tagging UI sends `'manual'`, `tag_with_llm.py` and `add_books_bulk.py` send `'llm'`. Existing rows are backfilled once: the 100 books from `backend/books_to_add.json` get `'llm'`, the other 36 get `'manual'`. `db/seed.sql` sets `'manual'` for its rows. `compare_llm_tagging.py` now compares only `tagged_by = 'manual'` books, and pages through `GET /books` with `offset` instead of a single `limit=100` call, which silently stopped at the first 100 books once the catalog grew to 136.
+
+**What prompted this:** `compare_llm_tagging.py` measures the LLM against manual tags, but it compared every tagged book. After the bulk run, that meant comparing LLM-tagged books against the LLM's own earlier output - a measurement of nothing. Diagnosing the recommendation split (previous entry) also needed to know which books were manual, and the only way was matching titles against `books_to_add.json` by hand.
+
+**Rejected alternatives:**
+- **Exclude books listed in `books_to_add.json` from the comparison.** Derives a fact about a row from an external file. A book tagged later through `tag_with_llm.py` isn't in that file, so it would be counted as manual and the measurement would break silently.
+- **Infer from `is_present_tense IS NULL`.** The UI default is now "unknown", so manual rows can be `NULL` too.
+- **Infer from `tagged_at` (everything after the bulk run is LLM).** Breaks the moment either kind of tagging happens again.
+- **Adding `tagged_by` directly to `StyleAttributesIn`.** That model also validates Gemini's response in `llm_tagging.py`, which has no `tagged_by` and shouldn't - so every LLM response would fail validation unless the value were injected first. `compare_llm_tagging.py` also builds its list of attributes to compare from `StyleAttributesIn.model_fields`, so `tagged_by` would show up as a "style attribute" with 0% agreement. `StyleAttributesIn` stays exactly the 10 style attributes; who tagged them is request metadata, added only where a request is made.
+- **A `DEFAULT 'manual'` on the column.** A script that forgets to send the field would be silently recorded as manual - the same silent failure this column exists to prevent. Required with no default makes a forgotten value a `422`, not wrong data.
+
+**Note on semantics:** `tagged_by` records who saved the row last. Saving a book from the tagging UI marks the whole row `'manual'`, even if some values started as LLM output - saving through the form means all 10 values were seen and accepted.
+
+**Reasoning:** Who tagged a book is a fact about that row, so it belongs on the row - same principle as tagging status being derived from the join and not from a separate flag (2026-09-11). It makes the comparison set correct for future books too, and can be checked directly with SQL.

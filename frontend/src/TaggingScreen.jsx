@@ -13,14 +13,16 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 // Default values for a fresh style-attributes form: the middle of each
 // 1-5 scale, the most common option for each category, and false for
-// every boolean. These are just a starting point for a new tag, not a
-// claim about any particular book.
+// every boolean - except is_present_tense, which starts as null
+// ("unknown"), so forgetting to choose leaves a gap, not a wrong value
+// (see DECISIONS.md). These are just a starting point for a new tag,
+// not a claim about any particular book.
 const DEFAULT_STYLE_FORM = {
   sentence_length: "medium",
   description_density: 3,
   dialogue_ratio: "medium",
   pov: "third_limited",
-  is_present_tense: false,
+  is_present_tense: null,
   tone: 3,
   pacing: 3,
   vocabulary_complexity: 3,
@@ -49,6 +51,15 @@ const POV_OPTIONS = [
   { value: "third_omniscient", label: "גוף שלישי יודע-כל" },
   { value: "second", label: "גוף שני" },
 ];
+// is_present_tense has three states (null / false / true), so it's a
+// dropdown, not a checkbox. A <select> value is always a string, so each
+// option's string maps back to the real value through this lookup.
+const PRESENT_TENSE_OPTIONS = [
+  { value: "null", label: "לא ידוע" },
+  { value: "false", label: "זמן עבר" },
+  { value: "true", label: "זמן הווה" },
+];
+const PRESENT_TENSE_VALUES = { null: null, false: false, true: true };
 const LANGUAGE_OPTIONS = [
   { value: "he", label: "עברית" },
   { value: "en", label: "אנגלית" },
@@ -148,7 +159,9 @@ export default function TaggingScreen() {
   }
 
   // Takes the submit event from the style-attributes form. Sends
-  // styleForm to PUT /books/{id}/style-attributes for bookBeingTagged.
+  // styleForm, plus tagged_by: "manual" (this form is the manual
+  // tagger - see DECISIONS.md), to PUT /books/{id}/style-attributes for
+  // bookBeingTagged.
   // On success, the book is tagged, so it's cleared from this screen
   // and the untagged list is refreshed (the book will no longer appear
   // in it).
@@ -161,7 +174,7 @@ export default function TaggingScreen() {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(styleForm),
+          body: JSON.stringify({ ...styleForm, tagged_by: "manual" }),
         },
       );
       if (!response.ok) throw new Error("save style attributes request failed");
@@ -311,14 +324,22 @@ export default function TaggingScreen() {
             </label>
 
             <label>
-              <input
-                type="checkbox"
-                checked={styleForm.is_present_tense}
+              זמן דקדוקי
+              <select
+                value={String(styleForm.is_present_tense)}
                 onChange={(event) =>
-                  handleStyleFormChange("is_present_tense", event.target.checked)
+                  handleStyleFormChange(
+                    "is_present_tense",
+                    PRESENT_TENSE_VALUES[event.target.value],
+                  )
                 }
-              />
-              זמן הווה (אם לא מסומן: זמן עבר)
+              >
+                {PRESENT_TENSE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>

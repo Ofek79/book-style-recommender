@@ -1,6 +1,8 @@
 """
 CLI script: measures how well Gemini's auto-tagging agrees with the
-existing manually-tagged books. Never writes to the database - it only
+existing manually-tagged books (tagged_by = 'manual' - comparing
+LLM-tagged books against the LLM would measure nothing). Never writes
+to the database - it only
 reads already-tagged books and compares the LLM's guess in memory (see
 DECISIONS.md on why that's enough to guarantee manual tags are never
 touched). It does persist its own progress to RESULTS_PATH after every
@@ -46,18 +48,36 @@ NUMERIC_ATTRIBUTES = {"description_density", "tone", "pacing", "vocabulary_compl
 ATTRIBUTE_NAMES = list(StyleAttributesIn.model_fields.keys())
 
 
-# Takes nothing. Returns every currently-tagged book's id, title,
-# author, and manual style_attributes - via GET /books to find which
-# ones are tagged, then GET /books/{id} for each one's attributes.
-# Exists so the comparison set always matches whatever the API
-# currently considers "tagged", rather than a separately-maintained list.
-def fetch_tagged_books():
-    summaries = list_books(limit=100)
-    tagged_books = []
+# How many book summaries to ask for per GET /books call - the API's
+# own maximum for limit.
+PAGE_SIZE = 100
+
+
+# Takes nothing. Returns every manually-tagged book's id, title, author,
+# and style_attributes - pages through GET /books (offset by PAGE_SIZE
+# until a page comes back short, since one call is capped at 100 and the
+# catalog is bigger), then GET /books/{id} for each tagged one, keeping
+# only tagged_by = 'manual'. Exists so the comparison set always matches
+# what the database says right now, rather than a separately-maintained
+# list (see DECISIONS.md on tagged_by).
+def fetch_manually_tagged_books():
+    summaries = []
+    offset = 0
+    while True:
+        page = list_books(limit=PAGE_SIZE, offset=offset)
+        summaries.extend(page)
+        if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+
+    manual_books = []
     for summary in summaries:
-        if summary["is_tagged"]:
-            tagged_books.append(get_book(summary["id"]))
-    return tagged_books
+        if not summary["is_tagged"]:
+            continue
+        book = get_book(summary["id"])
+        if book["style_attributes"]["tagged_by"] == "manual":
+            manual_books.append(book)
+    return manual_books
 
 
 # Takes one attribute's manual value, its LLM-produced value, and the
@@ -102,7 +122,11 @@ def load_progress():
 # percentage from the raw per-book values each time it's called, rather
 # than trusting separately-maintained running counters, so a live run
 # and a --report-only run always produce the same numbers from the same
-# underlying data.
+# underlying data. A book only counts toward an attribute if both sides
+# have a value - None ("unknown") on either side is left out, the same
+# rule similarity.py uses. An attribute with no such book (today
+# is_present_tense, which the LLM no longer tags) is reported as not
+# compared, instead of a misleading 0%.
 def print_report(total_books, results, skipped):
     compared = len(results)
     print(f"\nCompared {compared}/{total_books} books ({len(skipped)} skipped).")
@@ -115,22 +139,30 @@ def print_report(total_books, results, skipped):
         print("\nNo books were successfully compared - nothing to report.")
         return
 
-    print("\nAgreement by attribute (out of the books actually compared):")
+    print("\nAgreement by attribute (out of the books where both sides have a value):")
     for name in ATTRIBUTE_NAMES:
+        pairs = [
+            (book_result["manual_attributes"][name], book_result["llm_attributes"][name])
+            for book_result in results
+            if book_result["manual_attributes"][name] is not None
+            and book_result["llm_attributes"][name] is not None
+        ]
+        if not pairs:
+            print(f"  {name}: not compared (no book has a value on both sides)")
+            continue
+
         exact_count = 0
         within_one_count = 0
-        for book_result in results:
-            exact_match, within_one = compare_attribute(
-                book_result["manual_attributes"][name], book_result["llm_attributes"][name], name
-            )
+        for manual_value, llm_value in pairs:
+            exact_match, within_one = compare_attribute(manual_value, llm_value, name)
             exact_count += exact_match
             within_one_count += bool(within_one)
-        exact_percent = 100 * exact_count / compared
+        exact_percent = 100 * exact_count / len(pairs)
         if name in NUMERIC_ATTRIBUTES:
-            within_one_percent = 100 * within_one_count / compared
-            print(f"  {name}: {exact_percent:.0f}% exact, {within_one_percent:.0f}% within ±1")
+            within_one_percent = 100 * within_one_count / len(pairs)
+            print(f"  {name}: {exact_percent:.0f}% exact, {within_one_percent:.0f}% within ±1 (n={len(pairs)})")
         else:
-            print(f"  {name}: {exact_percent:.0f}% exact")
+            print(f"  {name}: {exact_percent:.0f}% exact (n={len(pairs)})")
 
 
 def main():
@@ -147,7 +179,7 @@ def main():
         print_report(saved["total_books"], saved["results"], saved["skipped"])
         return
 
-    books = fetch_tagged_books()
+    books = fetch_manually_tagged_books()
     print(f"Comparing LLM tagging against {len(books)} manually-tagged books.\n")
 
     results = []

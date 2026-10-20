@@ -36,11 +36,11 @@ CREATE INDEX idx_books_author ON books (author);
 CREATE UNIQUE INDEX idx_books_title_author_unique
     ON books (lower(trim(title)), lower(trim(author)));
 
--- Manually-tagged writing-style attributes, one row per tagged book.
--- book_id is both the primary key and the foreign key: this table is a
--- strict 1:1 extension of books. A book with no row here is "not tagged
--- yet" and is excluded from recommendations by a plain INNER JOIN -
--- no separate status flag needed.
+-- Writing-style attributes, one row per tagged book, tagged manually or
+-- by the LLM (see tagged_by). book_id is both the primary key and the
+-- foreign key: this table is a strict 1:1 extension of books. A book
+-- with no row here is "not tagged yet" and is excluded from
+-- recommendations by a plain INNER JOIN - no separate status flag needed.
 CREATE TABLE book_style_attributes (
     book_id INTEGER PRIMARY KEY REFERENCES books (id) ON DELETE CASCADE,
     sentence_length TEXT NOT NULL
@@ -51,7 +51,10 @@ CREATE TABLE book_style_attributes (
         CHECK (dialogue_ratio IN ('low', 'medium', 'high')),
     pov TEXT NOT NULL
         CHECK (pov IN ('first', 'third_limited', 'third_omniscient', 'second')),
-    is_present_tense BOOLEAN NOT NULL,
+    -- Nullable: NULL means "unknown". Tagged manually only - the LLM
+    -- gets this wrong too often to trust (see EVALUATION.md and
+    -- DECISIONS.md), so LLM-tagged rows leave it NULL.
+    is_present_tense BOOLEAN,
     tone SMALLINT NOT NULL
         CHECK (tone BETWEEN 1 AND 5),
     pacing SMALLINT NOT NULL
@@ -60,5 +63,10 @@ CREATE TABLE book_style_attributes (
         CHECK (vocabulary_complexity BETWEEN 1 AND 5),
     is_nonlinear BOOLEAN NOT NULL,
     has_humor BOOLEAN NOT NULL,
+    -- Who saved this row last. No default on purpose: a caller that
+    -- forgets to say who is tagging gets an error, not a silent
+    -- 'manual' (see DECISIONS.md).
+    tagged_by TEXT NOT NULL
+        CHECK (tagged_by IN ('manual', 'llm')),
     tagged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

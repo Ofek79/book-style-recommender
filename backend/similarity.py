@@ -103,8 +103,10 @@ def describe_attribute(name, value_a, value_b):
 # Takes the two books' attribute dicts and the per-attribute distances
 # already computed for them. Returns a list of RATIONALE_ATTRIBUTE_COUNT
 # sentences, for the attributes where the books are closest, closest
-# first. Exists to satisfy the product's hard requirement that every
-# recommendation comes back with a readable rationale, not just a score.
+# first. Only attributes present in distances can be picked, so an
+# unknown attribute (see similarity below) never shows up here. Exists
+# to satisfy the product's hard requirement that every recommendation
+# comes back with a readable rationale, not just a score.
 def build_rationale(attributes_a, attributes_b, distances):
     closest_first = sorted(distances, key=distances.get)
     top = closest_first[:RATIONALE_ATTRIBUTE_COUNT]
@@ -117,14 +119,24 @@ def build_rationale(attributes_a, attributes_b, distances):
 # alike) to 1 (identical on every attribute), rationale is the sentence
 # list from build_rationale. This is the one function the
 # recommendations endpoint calls once per candidate book.
+#
+# An attribute that is None ("unknown") on either book is left out
+# entirely - out of the distances and out of the weight total - so the
+# score is a weighted average over the attributes both books actually
+# have. Today only is_present_tense can be None: it's NULL for
+# LLM-tagged books (see DECISIONS.md).
 def similarity(attributes_a, attributes_b):
+    known = [
+        name for name in WEIGHTS
+        if attributes_a[name] is not None and attributes_b[name] is not None
+    ]
     distances = {
         name: attribute_distance(name, attributes_a[name], attributes_b[name])
-        for name in WEIGHTS
+        for name in known
     }
-    total_weight = sum(WEIGHTS.values())
+    total_weight = sum(WEIGHTS[name] for name in known)
     weighted_average_distance = (
-        sum(WEIGHTS[name] * distances[name] for name in WEIGHTS) / total_weight
+        sum(WEIGHTS[name] * distances[name] for name in known) / total_weight
     )
     score = 1 - weighted_average_distance
     rationale = build_rationale(attributes_a, attributes_b, distances)
