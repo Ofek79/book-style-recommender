@@ -1,6 +1,6 @@
 # LLM auto-tagging evaluation
 
-Two runs so far, both 2026-10-19, same model (`models/gemini-3.8-flash`), same 36-book catalog. Read the [Methodology note](#methodology-note) before trusting either run's numbers on their own.
+Two full runs, both 2026-10-19, same model (`models/gemini-3.8-flash`), same 36-book catalog, plus one targeted 8-book experiment on 2026-10-20 ([`title_original` vs. `is_present_tense`](#experiment-title_original-vs-is_present_tense-2026-10-20)). Read the [Methodology note](#methodology-note) before trusting either run's numbers on their own.
 
 ## Run 1 (baseline, before the `is_nonlinear` prompt fix)
 
@@ -85,8 +85,34 @@ Nothing about these 27 books' inputs changed between calls - this is Gemini givi
 
 A single run over 29 books is small enough that normal sampling noise moves individual attribute percentages by a meaningful amount run to run - the comparison above shows 7-15% drift on attributes nobody touched, just from calling the same prompt twice. **Treat any single run's exact percentage as a rough estimate, not a precise score.** Before concluding a change helped or hurt, run `compare_llm_tagging.py` 2-3 times and look at the range (or mean) across runs, not one number - especially for attributes already close to this method's own noise floor, or for small differences between two runs (a handful of points either way is within the noise seen here).
 
+## Experiment: `title_original` vs. `is_present_tense` (2026-10-20)
+
+**Why it was run:** After the 100-book LLM bulk tagging, manually-tagged books were recommended almost only other manually-tagged books. Diagnosis found two attributes driving most of that split, `is_present_tense` and `is_nonlinear`. On the 29 books Run 2 compared, every `is_present_tense` disagreement went one way: **8/8 were manual = present, LLM = past**, with 0 the other way. The tagger then checked all 8 books against the actual text: **all 8 are present tense.** The manual tags were right and the model was wrong on every one.
+
+**Hypothesis tested:** these are recognition failures, not definition failures. All 8 are Hebrew-titled thrillers that had no `title_original` at Run 2 time, so the model may have recognized the author but not the specific book, and guessed the common case (past).
+
+**Setup:** `title_original` filled for the 6 of the 8 that lacked it (2 already had one). Each book tagged **twice in the same session**, once without `title_original` and once with it, so prompt wording, model, and `temperature=0` were identical between the two calls and only `title_original` differed. `author` deliberately left unchanged, to keep one variable. 16 calls (17 sent - one `504` retried automatically). Nothing was written to `book_style_attributes`.
+
+| Book | `title_original` | Manual | Without | With |
+| --- | --- | --- | --- | --- |
+| הנאשמות | Fifty Fifty | present | past | past |
+| פרקליטו של השטן | The Devil's Advocate | present | past | past |
+| אני אמצא אותך | I Will Find You | present | past | past |
+| תחשוב פעמיים | Think Twice | present | past | past |
+| המושבעים | Thirteen | present | `unknown_book` | past |
+| הבתולות | The Maidens | present | past | past |
+| עוזרת הבית | The Housemaid | present | present | past |
+| רוחות הזעם | The Fury | present | past | past |
+
+**Result: hypothesis rejected.** `is_present_tense` was right on 1/8 without `title_original` and **0/8 with it**. `title_original` did help recognition (המושבעים went from `unknown_book` to tagged), and overall 10-attribute agreement barely moved (one book up 4→6, one down 4→3, the rest unchanged). So the model recognizes these books and still says past tense.
+
+**Conclusion:** grammatical tense is a text-level detail the model does not reliably know from a title and author, and when unsure it defaults to past, the common case. *The Housemaid* is present tense in the English original too, so "the Hebrew translation changed the tense" does not explain it. Rewording the prompt is unlikely to help, because wording can't supply knowledge the model doesn't have. **Decision: `is_present_tense` is tagged manually only, and treated as unknown for LLM-tagged books** (see `DECISIONS.md`).
+
+**Limits:** 8 books is a small sample, but 0/8, all wrong in the same direction, on books the tagger verified against the text, is a clear enough pattern to drop the attribute from auto-tagging. It does not say the model's `False` answers on the other 100 books are wrong - only that they can't be trusted. Their distribution (12/100 present) is plausible for a catalog of mostly classics and literary fiction, and every book tagged present looks correct.
+
 ## Practical conclusion (updated)
 
-- `title_original` has not been tested yet - it was built to fix exactly the "well-known author, unrecognized Hebrew title" failure mode, but no book has actually had it filled in. Fill it in for קרבת דם and the other still-skipped books, then re-run (ideally 2-3 times, per the methodology note) before judging whether it works.
+- `is_present_tense` is not reliable from LLM auto-tagging (see the experiment above) - manual only.
+- `title_original` has now been tested on 8 books: it helps recognition (1 book went from `unknown_book` to tagged) but does not fix attributes the model simply doesn't know. It still hasn't been tried on the other `unknown_book` books listed above (קרבת דם and the rest).
 - `is_nonlinear`'s improvement (45% → 66%) looks like a real effect of the prompt fix, not noise, based on both the direction matching the hypothesis and the magnitude being well outside the ~0-15% noise band measured on unchanged attributes - but should still be confirmed with another run or two rather than treated as final.
 - The attributes with strong, reliable surface signals (pov, sentence_length, has_humor) remain credible to lean on. The numeric attributes are close but noisy; `pacing`'s upward bias (noted in Run 1) hasn't been re-checked for direction in Run 2 and is worth revisiting once multi-run ranges are available.

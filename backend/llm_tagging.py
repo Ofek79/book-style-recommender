@@ -87,11 +87,13 @@ class GeminiRequestError(Exception):
 # title (for a translated edition - see EVALUATION.md: Hebrew-titled
 # translations were being missed as "unknown_book" when the model only
 # recognized the book under its original title). Returns a plain-English
-# prompt asking for exactly the 10 style attributes as JSON, with every
+# prompt asking for 9 of the 10 style attributes as JSON, with every
 # allowed value spelled out (matching StyleAttributesIn exactly), or a
 # fixed "unknown book" response if the model isn't confident it knows
-# this specific book. Exists as its own function so the prompt text is
-# easy to find and edit without touching the request/parsing logic.
+# this specific book. is_present_tense is deliberately not asked for -
+# the model gets it wrong too often to trust (see EVALUATION.md), so
+# it's tagged manually only. Exists as its own function so the prompt
+# text is easy to find and edit without touching the request/parsing logic.
 def build_prompt(title, author, title_original=None):
     original_title_line = (
         f'\nThis is a translated edition; the work\'s original title is "{title_original}".\n'
@@ -106,14 +108,13 @@ If you are not highly confident you know this specific, real book by this
 exact title and author, respond with exactly this JSON and nothing else:
 {{"unknown_book": true}}
 
-Otherwise, respond with exactly one JSON object with exactly these 10 keys
+Otherwise, respond with exactly one JSON object with exactly these 9 keys
 and no others:
 
 - sentence_length: one of "short", "medium", "long" - typical sentence length in the prose.
 - description_density: integer 1-5 - 1 = almost no descriptive prose (dialogue/action-driven), 5 = rich descriptive prose.
 - dialogue_ratio: one of "low", "medium", "high" - how much of the text is dialogue versus narration.
 - pov: one of "first", "third_limited", "third_omniscient", "second" - the narrative point of view.
-- is_present_tense: boolean - true if the main narrative is told in present tense, false if past tense.
 - tone: integer 1-5 - 1 = light/humorous tone, 5 = dark/somber tone.
 - pacing: integer 1-5 - 1 = slow and contemplative, 5 = fast-paced and event-driven.
 - vocabulary_complexity: integer 1-5 - 1 = simple, plain language, 5 = complex, literary vocabulary.
@@ -146,7 +147,9 @@ def parse_json_response(raw_text):
 # (see build_prompt above). Calls Gemini and returns one of two
 # outcomes: {"status": "tagged", "attributes": {...}} with all 10 style
 # attributes validated against the exact same rules the API enforces
-# (schemas.StyleAttributesIn), or {"status": "unknown_book"} if the
+# (schemas.StyleAttributesIn) - is_present_tense is always None
+# ("unknown"), since the LLM isn't trusted with it - or
+# {"status": "unknown_book"} if the
 # model said it doesn't recognize the book. Raises TransientServerError,
 # InvalidResponseError, or GeminiRequestError on failure - see the
 # exception classes above for what each means. This is the one function
@@ -187,6 +190,10 @@ def tag_book_with_llm(title, author, title_original=None):
 
     if data.get("unknown_book"):
         return {"status": "unknown_book"}
+
+    # Set here, not asked of the model: even if it returns a value
+    # anyway, that value is overwritten and never saved.
+    data["is_present_tense"] = None
 
     try:
         attributes = StyleAttributesIn(**data)

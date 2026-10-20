@@ -124,7 +124,9 @@ def main():
                 print("  model does not recognize this book - added, left untagged")
                 continue
 
-            save_style_attributes(book["id"], result["attributes"])
+            # tagged_by is added at save time, not returned by
+            # tag_book_with_llm (see StyleAttributesPut in schemas.py).
+            save_style_attributes(book["id"], {**result["attributes"], "tagged_by": "llm"})
             tagged_count += 1
             print("  tagged")
     except KeyboardInterrupt:

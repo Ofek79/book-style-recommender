@@ -201,3 +201,59 @@ def test_similarity_respects_changed_weight(monkeypatch):
     weighted_score, _ = similarity.similarity(attrs_a, attrs_b)
 
     assert weighted_score < baseline_score
+
+
+# --- unknown (None) attributes ---------------------------------------------
+
+
+# Takes the two is_present_tense values to use for the seed pair. An
+# unknown value on either side - or on both - must drop the attribute
+# from the score entirely: the average is over the 9 known attributes
+# (description_density 0.25 + tone 0.5 = 0.75 / 9), not 10. The (None,
+# None) case matters most: a plain == would read two unknowns as "equal"
+# and pull LLM-tagged books toward each other (see DECISIONS.md).
+@pytest.mark.parametrize(
+    "present_a, present_b",
+    [(None, False), (False, None), (None, None)],
+)
+def test_similarity_unknown_attribute_left_out_of_score(present_a, present_b):
+    attrs_a = dict(OLD_MAN_AND_THE_SEA, is_present_tense=present_a)
+    attrs_b = dict(THE_ROAD, is_present_tense=present_b)
+    score, _ = similarity.similarity(attrs_a, attrs_b)
+    assert score == pytest.approx(1 - 0.75 / 9)
+
+
+# Takes nothing. Two books that differ on every known attribute, with
+# is_present_tense unknown on both: the rationale must still have 3
+# sentences, none of them about tense, and the score must be 0.0 over the
+# 9 known attributes. With a plain ==, None == None would make tense the
+# "closest" attribute and put it first in the rationale.
+def test_similarity_unknown_attribute_never_in_rationale():
+    attrs_a = {
+        "sentence_length": "short",
+        "description_density": 1,
+        "dialogue_ratio": "low",
+        "pov": "first",
+        "is_present_tense": None,
+        "tone": 1,
+        "pacing": 1,
+        "vocabulary_complexity": 1,
+        "is_nonlinear": True,
+        "has_humor": True,
+    }
+    attrs_b = {
+        "sentence_length": "long",
+        "description_density": 5,
+        "dialogue_ratio": "high",
+        "pov": "third_omniscient",
+        "is_present_tense": None,
+        "tone": 5,
+        "pacing": 5,
+        "vocabulary_complexity": 5,
+        "is_nonlinear": False,
+        "has_humor": False,
+    }
+    score, rationale = similarity.similarity(attrs_a, attrs_b)
+    assert score == 0.0
+    assert len(rationale) == 3
+    assert not any(similarity.ATTRIBUTE_LABELS["is_present_tense"] in sentence for sentence in rationale)

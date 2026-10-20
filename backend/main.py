@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.errors import UniqueViolation
 
 from db import get_connection
-from schemas import BookIn, StyleAttributesIn
+from schemas import BookIn, StyleAttributesPut
 from similarity import similarity as compute_similarity
 
 # The application object that every endpoint is registered on and uvicorn runs.
@@ -103,7 +103,7 @@ def get_book(book_id: int):
             """
             SELECT sentence_length, description_density, dialogue_ratio, pov,
                    is_present_tense, tone, pacing, vocabulary_complexity,
-                   is_nonlinear, has_humor, tagged_at
+                   is_nonlinear, has_humor, tagged_by, tagged_at
             FROM book_style_attributes WHERE book_id = %(book_id)s
             """,
             {"book_id": book_id},
@@ -257,15 +257,16 @@ def create_book(book: BookIn):
     return created_book
 
 
-# Takes a book id from the path and its 10 style attributes (see
-# StyleAttributesIn above for validation). Saves them - creating the
-# book_style_attributes row if the book has never been tagged, or
-# replacing it if it has (PUT means save-or-replace, not append, so
-# re-tagging an already-tagged book is also handled by this same
-# endpoint). Returns the saved row. 404 if the book itself doesn't
-# exist - tagging only makes sense for a real book.
+# Takes a book id from the path, its 10 style attributes, and who is
+# tagging - 'manual' or 'llm' (see StyleAttributesPut in schemas.py for
+# validation). Saves them - creating the book_style_attributes row if
+# the book has never been tagged, or replacing it if it has (PUT means
+# save-or-replace, not append, so re-tagging an already-tagged book is
+# also handled by this same endpoint). tagged_by is replaced too, so it
+# always records who saved the row last. Returns the saved row. 404 if
+# the book itself doesn't exist - tagging only makes sense for a real book.
 @app.put("/books/{book_id}/style-attributes")
-def set_style_attributes(book_id: int, attributes: StyleAttributesIn):
+def set_style_attributes(book_id: int, attributes: StyleAttributesPut):
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT id FROM books WHERE id = %(book_id)s", {"book_id": book_id})
         if cur.fetchone() is None:
@@ -275,11 +276,12 @@ def set_style_attributes(book_id: int, attributes: StyleAttributesIn):
             """
             INSERT INTO book_style_attributes
                 (book_id, sentence_length, description_density, dialogue_ratio, pov,
-                 is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear, has_humor)
+                 is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear, has_humor,
+                 tagged_by)
             VALUES
                 (%(book_id)s, %(sentence_length)s, %(description_density)s, %(dialogue_ratio)s, %(pov)s,
                  %(is_present_tense)s, %(tone)s, %(pacing)s, %(vocabulary_complexity)s,
-                 %(is_nonlinear)s, %(has_humor)s)
+                 %(is_nonlinear)s, %(has_humor)s, %(tagged_by)s)
             ON CONFLICT (book_id) DO UPDATE SET
                 sentence_length = EXCLUDED.sentence_length,
                 description_density = EXCLUDED.description_density,
@@ -291,10 +293,11 @@ def set_style_attributes(book_id: int, attributes: StyleAttributesIn):
                 vocabulary_complexity = EXCLUDED.vocabulary_complexity,
                 is_nonlinear = EXCLUDED.is_nonlinear,
                 has_humor = EXCLUDED.has_humor,
+                tagged_by = EXCLUDED.tagged_by,
                 tagged_at = now()
             RETURNING book_id, sentence_length, description_density, dialogue_ratio, pov,
                       is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear,
-                      has_humor, tagged_at
+                      has_humor, tagged_by, tagged_at
             """,
             {"book_id": book_id, **attributes.model_dump()},
         )

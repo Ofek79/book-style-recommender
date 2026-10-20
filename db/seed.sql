@@ -30,12 +30,14 @@ INSERT INTO books (open_library_id, title, author, genre) VALUES
     ('seed-brave-new-world', 'Brave New World', 'Aldous Huxley', 'Dystopian Fiction');
 
 -- One row per book above, matched by open_library_id so this does not
--- depend on the auto-generated id order.
+-- depend on the auto-generated id order. Every seed row was tagged by
+-- hand, so tagged_by is the constant 'manual' for all of them.
 INSERT INTO book_style_attributes
     (book_id, sentence_length, description_density, dialogue_ratio, pov,
-     is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear, has_humor)
+     is_present_tense, tone, pacing, vocabulary_complexity, is_nonlinear, has_humor, tagged_by)
 SELECT id, v.sentence_length, v.description_density, v.dialogue_ratio, v.pov,
-       v.is_present_tense, v.tone, v.pacing, v.vocabulary_complexity, v.is_nonlinear, v.has_humor
+       v.is_present_tense, v.tone, v.pacing, v.vocabulary_complexity, v.is_nonlinear, v.has_humor,
+       'manual'
 FROM books
 JOIN (VALUES
     -- open_library_id,                sentence_length, desc_density, dialogue_ratio, pov,               present, tone, pacing, vocab, nonlinear, humor

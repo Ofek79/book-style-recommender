@@ -41,13 +41,15 @@ def get_book(book_id):
         sys.exit(f"Could not reach the API server at {API_BASE_URL}: {error.reason}")
 
 
-# Takes nothing (or a limit). Returns every book summary via GET
-# /books. Exists so compare_llm_tagging.py can find which books are
-# currently tagged.
-def list_books(limit=100):
+# Takes a limit and an offset. Returns one page of book summaries via
+# GET /books. The API caps limit at 100, so a caller that needs the
+# whole catalog loops over offset until a page comes back short (see
+# compare_llm_tagging.py). Exists so compare_llm_tagging.py can find
+# which books are currently tagged.
+def list_books(limit=100, offset=0):
     try:
         with urllib.request.urlopen(
-            f"{API_BASE_URL}/books?limit={limit}", timeout=REQUEST_TIMEOUT_SECONDS
+            f"{API_BASE_URL}/books?limit={limit}&offset={offset}", timeout=REQUEST_TIMEOUT_SECONDS
         ) as response:
             return json.load(response)
     except urllib.error.URLError as error:
