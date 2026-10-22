@@ -1,0 +1,20 @@
+/* Search form: the field on its own line, the button below it at the
+   start of the line (the right side, in RTL). */
+
+/* A column flexbox, so the gap is real spacing between field and button,
+   and align-items: flex-start puts the button at the inline start - the
+   right side in RTL, the left in LTR - instead of relying on how an
+   inline button happens to wrap. */
+.search-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-block-end: var(--space-4);
+}
+
+/* The field still takes the full width; only the button keeps its own
+   size. */
+.search-form__input {
+  align-self: stretch;
+}

@@ -1,4 +1,6 @@
-# Book Style Recommender
+# Book-A-Like
+
+*(Repository name: `book-style-recommender`.)*
 
 A book recommendation engine that suggests books by **how they're written**,
 not by genre or topic. Search for a book and get back other books with a

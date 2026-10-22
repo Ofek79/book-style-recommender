@@ -1,0 +1,86 @@
+/* Page frame: the light header band with the title and screen tabs, and
+   the centered content column below it. */
+
+/* Header band: very light green, so the title is the only dark thing in
+   it (see the color rule in DECISIONS.md). The bottom border is what the
+   active tab "opens" into. */
+.app-header {
+  background-color: var(--color-green-50);
+  border-block-end: 1px solid var(--color-green-100);
+}
+
+/* Same centered column as the content below, so the title lines up with
+   the page content. */
+.app-header__inner,
+.app-main {
+  max-inline-size: var(--content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-3);
+}
+
+/* Spacing here and in .app-main is kept tight on purpose: the whole home
+   screen, down to the "try for example" books, should fit in one normal
+   laptop screen without scrolling. */
+.app-header__inner {
+  padding-block-start: var(--space-4);
+}
+
+.app-header__title {
+  margin-block-end: var(--space-1);
+  line-height: 1.1;
+}
+
+.app-header__tagline {
+  color: var(--color-green-600);
+  margin-block-end: 0;
+}
+
+/* ---- Screen tabs ----------------------------------------------------- */
+
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-block-start: var(--space-3);
+}
+
+/* Overrides the default (primary) button from base.css: a tab is quiet
+   until it's the active one. */
+.app-nav__tab {
+  color: var(--color-green-600);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-block-end: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding-block: var(--space-2);
+  /* Pulls the tab down over the header's bottom border, so the active
+     tab's paper-colored background covers it and the tab looks joined to
+     the page below - like an open page. */
+  margin-block-end: -1px;
+}
+
+.app-nav__tab:hover {
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+}
+
+.app-nav__tab--active,
+.app-nav__tab--active:hover {
+  color: var(--color-green-800);
+  background-color: var(--color-paper);
+  border-color: var(--color-green-100);
+}
+
+/* ---- Content column -------------------------------------------------- */
+
+.app-main {
+  padding-block: var(--space-4) var(--space-6);
+}
+
+/* Wider side padding once there's room for it. */
+@media (min-width: 40rem) {
+  .app-header__inner,
+  .app-main {
+    padding-inline: var(--space-4);
+  }
+}
