@@ -451,7 +451,7 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 - **Dropping the attribute entirely.** Throws away 36 manual values that are correct.
 - **Rewording the prompt.** Wording can't give the model knowledge it doesn't have. The experiment showed the failure persists even when the model recognizes the book.
 - **Scoring an unknown attribute as a neutral 0.5 distance.** Puts an invented number into every affected score, and is harder to explain than simply not counting what isn't known.
-- **Keeping the checkbox in the UI.** A checkbox has only two states. Opening an LLM-tagged book with `NULL` would show it unchecked, and saving would silently write `false` - exactly the bad data being removed.
+- **Keeping the checkbox in the UI.** A checkbox has only two states, checked and unchecked - it can't show "unknown", so it can't have "unknown" as its default. Every book tagged without touching it would be saved as `false` (past tense), a guessed value presented as a real one. (A first draft of this entry gave a different reason - that opening an LLM-tagged book with `NULL` would show it unchecked and saving would overwrite it with `false`. That was wrong: `TaggingScreen.jsx` only lists untagged books and always starts from a blank form, so it never loads an existing row.)
 
 **Cost accepted:** a pair involving an LLM-tagged book is now scored on 9 attributes, not 10. `is_present_tense` was a frequent source of difference, so those pairs score slightly higher than before. This is measured after implementing (see `EVALUATION.md`), not assumed.
 
