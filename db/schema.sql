@@ -70,3 +70,20 @@ CREATE TABLE book_style_attributes (
         CHECK (tagged_by IN ('manual', 'llm')),
     tagged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- The reader's own rating of a book, one row per rated book. Same shape
+-- as book_style_attributes: a strict 1:1 extension of books, and a book
+-- with no row here is simply "not rated" - no is_rated flag needed. Any
+-- book can be rated, tagged or not. Shown next to recommendations, never
+-- used in the similarity score (see DECISIONS.md).
+CREATE TABLE book_ratings (
+    book_id INTEGER PRIMARY KEY REFERENCES books (id) ON DELETE CASCADE,
+    rating SMALLINT NOT NULL
+        CHECK (rating BETWEEN 1 AND 5),
+    -- Optional free-text note. The API stores a blank note as NULL, so
+    -- "no note" has one form, not two.
+    note TEXT,
+    -- Updated on every save, so it always says when the current rating
+    -- was given.
+    rated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

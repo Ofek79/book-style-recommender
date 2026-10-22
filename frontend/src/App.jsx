@@ -14,6 +14,22 @@ import TaggingScreen from "./TaggingScreen";
 // Base URL of the API, injected by Vite from VITE_API_URL (see .env).
 const API_URL = import.meta.env.VITE_API_URL;
 
+// How many books to ask for per GET /books call - the API's own maximum
+// for limit. A broad search can match more than one page, so results
+// are loaded page by page (see searchBooks).
+const PAGE_SIZE = 100;
+
+// The rating scale shown as radio buttons in RatingForm - same 1-5 as
+// the CHECK constraint in db/schema.sql.
+const RATING_VALUES = [1, 2, 3, 4, 5];
+
+// Takes a rating from 1 to 5. Returns it as plain-text stars, e.g. 2 ->
+// "★★☆☆☆". Exists so the book detail and every recommendation show a
+// rating the same way, without a star-rating library.
+function formatStars(rating) {
+  return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
 export default function App() {
   // Which screen is showing. Toggled by the two nav buttons below -
   // no router, no URL change (see DECISIONS.md).
@@ -61,15 +77,27 @@ function MainScreen() {
   // Genre filter toggle, sent as the `genre` query parameter.
   const [genreFilter, setGenreFilter] = useState("any"); // any | same | different
 
-  // Takes a search term. Calls GET /books?search= and stores the
-  // result in searchResults, or flags searchStatus as "error" on
-  // failure. Exists as the one place that knows how to search books.
+  // Takes a search term. Calls GET /books?search= page by page (offset
+  // by PAGE_SIZE until a page comes back short - one call is capped at
+  // 100 books, and an empty search matches the whole catalog) and
+  // stores every match in searchResults, or flags searchStatus as
+  // "error" on failure. Exists as the one place that knows how to
+  // search books.
   async function searchBooks(term) {
     setSearchStatus("loading");
     try {
-      const response = await fetch(`${API_URL}/books?search=${encodeURIComponent(term)}`);
-      if (!response.ok) throw new Error("search request failed");
-      const books = await response.json();
+      const books = [];
+      let offset = 0;
+      while (true) {
+        const response = await fetch(
+          `${API_URL}/books?search=${encodeURIComponent(term)}&limit=${PAGE_SIZE}&offset=${offset}`,
+        );
+        if (!response.ok) throw new Error("search request failed");
+        const page = await response.json();
+        books.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
       setSearchResults(books);
       setSearchStatus("idle");
     } catch {
@@ -130,6 +158,13 @@ function MainScreen() {
     searchBooks(searchTerm);
   }
 
+  // Takes the rating just saved by RatingForm. Stores it on
+  // selectedBook, so the "your rating" line updates right away without
+  // re-fetching the book.
+  function handleRatingSaved(savedRating) {
+    setSelectedBook((previous) => ({ ...previous, rating: savedRating }));
+  }
+
   // Takes the new genre filter value. Updates it and re-loads
   // recommendations for the already-selected book - the book itself
   // does not need to be re-fetched.
@@ -157,6 +192,20 @@ function MainScreen() {
           <h2>
             המלצות סגנון עבור: {selectedBook.title} — {selectedBook.author}
           </h2>
+          {selectedBook.rating && (
+            <p>
+              הדירוג שלך: {formatStars(selectedBook.rating.rating)}
+              {selectedBook.rating.note && ` — ${selectedBook.rating.note}`}
+            </p>
+          )}
+          {/* key: a different book remounts the form, so its fields
+              start from that book's rating instead of the previous one's. */}
+          <RatingForm
+            key={selectedBook.id}
+            bookId={selectedBook.id}
+            currentRating={selectedBook.rating}
+            onSaved={handleRatingSaved}
+          />
           <GenreFilter value={genreFilter} onChange={handleGenreChange} />
           <RecommendationList
             status={recommendationsStatus}
@@ -217,6 +266,71 @@ function BookResults({ status, results, onSelectBook }) {
   );
 }
 
+// Takes a book id, the book's current rating (null | {rating, note}),
+// and a callback for after a successful save. Renders 1-5 radio buttons
+// and a note box, pre-filled from currentRating, and saves them with
+// PUT /books/{id}/rating. Holds its own form state - it's only the
+// draft until saved; MainScreen owns the saved rating. Works for any
+// book, tagged or not (see DECISIONS.md).
+function RatingForm({ bookId, currentRating, onSaved }) {
+  const [rating, setRating] = useState(currentRating ? currentRating.rating : null);
+  const [note, setNote] = useState(currentRating && currentRating.note ? currentRating.note : "");
+  const [status, setStatus] = useState("idle"); // idle | loading | error | saved
+
+  // Takes the submit event. Sends rating and note (a blank note is
+  // stored as null by the server), then hands the saved row back to
+  // MainScreen through onSaved.
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setStatus("loading");
+    try {
+      const response = await fetch(`${API_URL}/books/${bookId}/rating`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, note }),
+      });
+      if (!response.ok) throw new Error("save rating request failed");
+      const saved = await response.json();
+      setNote(saved.note ?? "");
+      setStatus("saved");
+      onSaved(saved);
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <fieldset>
+        <legend>{currentRating ? "עדכון הדירוג שלך" : "דרגו את הספר"}</legend>
+        {RATING_VALUES.map((value) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="rating"
+              value={value}
+              checked={rating === value}
+              onChange={() => setRating(value)}
+            />
+            {formatStars(value)}
+          </label>
+        ))}
+        <label>
+          הערה (אופציונלי)
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} />
+        </label>
+        {/* Disabled until a star count is picked - the server requires one. */}
+        <button type="submit" disabled={rating === null || status === "loading"}>
+          שמירת דירוג
+        </button>
+      </fieldset>
+      {status === "loading" && <p>שומר...</p>}
+      {status === "error" && <p>שגיאה בשמירת הדירוג.</p>}
+      {status === "saved" && <p>הדירוג נשמר.</p>}
+    </form>
+  );
+}
+
 // Takes the current genre filter value and a change callback. Renders
 // the any/same/different toggle as a radio group. Holds no state of
 // its own - App owns genreFilter.
@@ -261,8 +375,10 @@ function GenreFilter({ value, onChange }) {
 // Takes the recommendations request's status and its results (null | []
 // | recommendations). Renders the right message for loading/error/
 // not-tagged/no-book-selected-yet/no-results, or the list itself - each
-// item with its similarity score, its rationale sentences, and a
-// bookstore search link.
+// item with its similarity score, its rationale sentences, a bookstore
+// search link, and the reader's rating and note if the book is rated.
+// A low-rated book is shown like any other, in the order the server
+// sent - the rating is information, not a filter (see DECISIONS.md).
 function RecommendationList({ status, recommendations }) {
   if (status === "loading") {
     return <p>טוען המלצות...</p>;
@@ -287,6 +403,12 @@ function RecommendationList({ status, recommendations }) {
             {recommendation.book.title} — {recommendation.book.author}
           </h3>
           <p>ציון דמיון: {recommendation.similarity_score}</p>
+          {recommendation.book.rating && (
+            <p>
+              הדירוג שלך: {formatStars(recommendation.book.rating.rating)}
+              {recommendation.book.rating.note && ` — ${recommendation.book.rating.note}`}
+            </p>
+          )}
           <ul>
             {recommendation.rationale.map((sentence, index) => (
               <li key={index}>{sentence}</li>
