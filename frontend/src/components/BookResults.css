@@ -1,0 +1,22 @@
+/* Search results as a grid of cards: as many columns as fit (each at
+   least ~14rem wide), one column on a phone. Still a real <ul>, so
+   screen readers announce "list, N items". */
+.book-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* The grid gap does the spacing - cancel the default list spacing from
+   base.css so it isn't added twice. */
+.book-results > li + li {
+  margin-block-start: 0;
+}
+
+.book-results__count {
+  color: var(--color-ink-muted);
+  margin-block-end: var(--space-2);
+}

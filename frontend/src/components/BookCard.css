@@ -1,0 +1,64 @@
+/* One search result: a white card that is itself the button, so the whole
+   card is clickable and reachable with Tab. */
+
+/* Overrides the default (primary) button from base.css: a card, not a
+   filled green button. */
+.book-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  inline-size: 100%;
+  block-size: 100%;
+  text-align: start;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-ink);
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+}
+
+.book-card:hover {
+  background-color: var(--color-green-50);
+  border-color: var(--color-green-300);
+}
+
+.book-card__title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-green-800);
+}
+
+.book-card__author {
+  font-size: 0.95rem;
+  color: var(--color-ink-muted);
+}
+
+/* Tags sit at the bottom of the card, so cards of different text
+   lengths still line up their tags in a row. */
+.book-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-block-start: auto;
+  padding-block-start: var(--space-1);
+}
+
+.book-card__tag {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+  border-radius: 999px;
+  padding-inline: var(--space-2);
+}
+
+/* "Not tagged" is information, not an accent - a neutral, warm grey. */
+.book-card__tag--untagged {
+  color: var(--color-ink-muted);
+  background-color: var(--color-sand);
+}

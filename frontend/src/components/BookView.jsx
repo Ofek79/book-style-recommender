@@ -90,7 +90,20 @@ export default function BookView({
 
       <div className="book-view__recommendations-header">
         <h3 className="book-view__recommendations-title">ספרים בסגנון דומה</h3>
-        <GenreFilter value={genreFilter} onChange={onGenreChange} />
+        <div className="book-view__filter">
+          <GenreFilter
+            value={genreFilter}
+            onChange={onGenreChange}
+            descriptionId="genre-filter-hint"
+          />
+          {/* Changing the filter re-runs the recommendation over a
+              different set of candidates - it doesn't just hide some of
+              the books already shown - so new books can appear. Said
+              up front, since it surprises people otherwise. */}
+          <p className="book-view__filter-hint" id="genre-filter-hint">
+            הסינון מחשב את ההמלצות מחדש, ולכן יכולים להופיע ספרים שלא היו ברשימה הקודמת.
+          </p>
+        </div>
       </div>
       <RecommendationList status={recommendationsStatus} recommendations={recommendations} />
     </section>

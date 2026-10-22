@@ -6,6 +6,100 @@
   margin: 0;
   display: grid;
   gap: var(--space-3);
+  /* Fading the old cards down while the new set loads (see
+     --reloading below). */
+  transition: opacity 0.25s ease;
+}
+
+/* ---- New cards animate in -------------------------------------------- */
+
+/* Each card of a new set fades in and slides up a little, one shortly
+   after another, instead of the whole list swapping in at once. The list
+   is re-created for each new set of books (see RecommendationList.jsx),
+   so this runs every time the set changes. "both" keeps a card invisible
+   during its delay, so it doesn't flash in and then animate. */
+.recommendation-list > li {
+  animation: recommendation-card-in 0.4s ease-out both;
+}
+
+.recommendation-list > li:nth-child(2) {
+  animation-delay: 0.06s;
+}
+
+.recommendation-list > li:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.recommendation-list > li:nth-child(4) {
+  animation-delay: 0.18s;
+}
+
+.recommendation-list > li:nth-child(n + 5) {
+  animation-delay: 0.24s;
+}
+
+@keyframes recommendation-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Reloading (e.g. after a genre filter change) ---------------------- */
+
+/* The wrapper is the anchor for the "updating" note, so the note floats
+   over the cards instead of pushing them down. */
+.recommendation-list-wrapper {
+  position: relative;
+}
+
+/* The current cards stay in place, dimmed, until the new ones arrive. */
+.recommendation-list--reloading {
+  opacity: 0.45;
+  pointer-events: none; /* no clicking a card that's about to be replaced */
+}
+
+/* A small pill over the top of the dimmed cards, with the same animated
+   dots as the other loading messages. */
+.recommendation-list__updating {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  z-index: 1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+  border: 1px solid var(--color-green-300);
+  border-radius: 999px;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-3);
+  margin-block: 0;
+  box-shadow: var(--shadow-card);
+}
+
+.recommendation-list__updating::after {
+  content: "...";
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  inline-size: 1.1em;
+  animation: recommendation-list-dots 1.2s steps(3, end) infinite;
+}
+
+@keyframes recommendation-list-dots {
+  from {
+    inline-size: 0;
+  }
+  to {
+    inline-size: 1.1em;
+  }
 }
 
 /* The grid gap does the spacing - cancel the default list spacing from

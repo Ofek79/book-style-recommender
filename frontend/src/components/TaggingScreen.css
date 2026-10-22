@@ -1,0 +1,133 @@
+/* Tagging screen: white panels on the paper background. On a wide screen
+   the add-book form and the untagged list sit side by side; the tagging
+   form, when open, spans the full width below them. */
+
+.tagging {
+  display: grid;
+  gap: var(--space-4);
+}
+
+@media (min-width: 56rem) {
+  .tagging {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  /* The tagging form needs the room for its field grid. */
+  .tagging__panel--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.tagging__panel {
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding-block: var(--space-4);
+  padding-inline: var(--space-4);
+}
+
+/* The open tagging form is the active task - a soft green edge sets it
+   apart from the other two panels. */
+.tagging__panel--active {
+  border-color: var(--color-green-300);
+  box-shadow: inset 0 3px 0 var(--color-green-300);
+}
+
+.tagging__panel-title {
+  font-size: 1.35rem;
+  margin-block-end: var(--space-3);
+}
+
+/* Focused from code when a book is picked (see TaggingScreen.jsx), which
+   also scrolls it into view. Not a control, so no focus ring. */
+.tagging__panel-title:focus {
+  outline: none;
+}
+
+.tagging__subtitle {
+  color: var(--color-ink-muted);
+  margin-block: calc(-1 * var(--space-2)) var(--space-3);
+}
+
+/* ---- Form fields ------------------------------------------------------ */
+
+/* Fields in a grid: as many columns as fit, each at least ~12rem. */
+.tagging__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-3);
+  margin-block-end: var(--space-3);
+}
+
+/* Label text above its control. */
+.tagging__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tagging__field-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-green-800);
+}
+
+.tagging__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-block-end: var(--space-3);
+}
+
+.tagging__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tagging__status {
+  font-size: 0.95rem;
+  color: var(--color-green-600);
+  margin-block: var(--space-2) 0;
+}
+
+.tagging__status--error {
+  color: var(--color-red-700);
+}
+
+/* ---- Untagged books ---------------------------------------------------- */
+
+.tagging__untagged {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tagging__untagged > li + li {
+  margin-block-start: 0;
+}
+
+/* Overrides the default (primary) button: a quiet chip per book. */
+.tagging__untagged-book {
+  font-weight: 400;
+  color: var(--color-ink);
+  background-color: var(--color-white);
+  border: 1px solid var(--color-green-300);
+  border-radius: 999px;
+}
+
+.tagging__untagged-book:hover {
+  background-color: var(--color-green-50);
+}
+
+/* The book whose form is open. */
+.tagging__untagged-book--selected,
+.tagging__untagged-book--selected:hover {
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+  font-weight: 600;
+}

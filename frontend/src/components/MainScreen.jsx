@@ -52,7 +52,11 @@ export default function MainScreen() {
   // - restoreScrollRef: true when returning to the results should
   //   restore that scroll position (not when leaving for a new search).
   // - leavingForSearchRef: set while a new search closes the book view.
+  // - latestRecommendationsRequestRef: counts recommendation requests, so
+  //   only the newest one's response is shown - clicking the genre filter
+  //   quickly can't let an older, slower response land last.
   const currentBookIdRef = useRef(null);
+  const latestRecommendationsRequestRef = useRef(0);
   const savedScrollRef = useRef(0);
   const restoreScrollRef = useRef(false);
   const leavingForSearchRef = useRef(false);
@@ -83,14 +87,19 @@ export default function MainScreen() {
   // since it needs a different message than a generic failure. Exists
   // on its own (not inside showBook) so changing just the genre filter
   // can re-run it without re-fetching the book itself. Ignores the
-  // response if the user has left this book in the meantime.
+  // response if a newer request was made since (another filter click, or
+  // a different book).
   async function loadRecommendations(bookId, genre) {
+    latestRecommendationsRequestRef.current += 1;
+    const requestNumber = latestRecommendationsRequestRef.current;
+    const isStale = () => requestNumber !== latestRecommendationsRequestRef.current;
+
     setRecommendationsStatus("loading");
     try {
       const response = await fetch(
         `${API_URL}/books/${bookId}/recommendations?genre=${genre}`,
       );
-      if (currentBookIdRef.current !== bookId) return;
+      if (isStale()) return;
       if (response.status === 409) {
         setRecommendations(null);
         setRecommendationsStatus("not_tagged");
@@ -98,11 +107,11 @@ export default function MainScreen() {
       }
       if (!response.ok) throw new Error("recommendations request failed");
       const results = await response.json();
-      if (currentBookIdRef.current !== bookId) return;
+      if (isStale()) return;
       setRecommendations(results);
       setRecommendationsStatus("idle");
     } catch {
-      if (currentBookIdRef.current !== bookId) return;
+      if (isStale()) return;
       setRecommendations(null);
       setRecommendationsStatus("error");
     }
@@ -151,6 +160,8 @@ export default function MainScreen() {
   // closed by a new search.
   function closeBook() {
     currentBookIdRef.current = null;
+    // Makes any recommendations request still in flight stale.
+    latestRecommendationsRequestRef.current += 1;
     restoreScrollRef.current = !leavingForSearchRef.current;
     leavingForSearchRef.current = false;
     setSelectedBookId(null);

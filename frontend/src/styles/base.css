@@ -20,6 +20,7 @@
   --color-white: #ffffff; /* cards and form fields - set apart from the
                              paper by a border, not by color */
   --color-border: #e6ded0; /* card edges, dividers (decorative) */
+  --color-sand: #f0ebe2; /* neutral tag fill, e.g. "not tagged" (ink-muted on it: 5.6:1) */
   --color-ink-muted: #665b50; /* secondary text, form field borders (6.4:1) */
   --color-ink: #2a2420; /* main text (14.8:1) */
 
@@ -232,6 +233,9 @@ legend {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    /* Without this, a staggered animation's delay would still hold an
+       element invisible for a moment before it appears. */
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
   }
 }
