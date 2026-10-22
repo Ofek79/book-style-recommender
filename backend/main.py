@@ -1,6 +1,6 @@
 """
-Server entry point: the book search, book detail, recommendations, and
-tagging endpoints, plus /health from day 1.
+Server entry point: the book search, book detail, recommendations,
+tagging, and rating endpoints, plus /health from day 1.
 Run: uvicorn main:app --reload
 """
 
@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from psycopg.errors import UniqueViolation
 
 from db import get_connection
-from schemas import BookIn, StyleAttributesPut
+from schemas import BookIn, RatingIn, StyleAttributesPut
 from similarity import similarity as compute_similarity
 
 # The application object that every endpoint is registered on and uvicorn runs.
@@ -82,9 +82,12 @@ def list_books(
 
 
 # Takes a book id from the path. Returns the book's metadata plus
-# is_tagged, and its style_attributes when is_tagged is true. 404 if no
-# book has this id. Exists so a single book can be looked up by id, e.g.
-# from a search result, before requesting its recommendations.
+# is_tagged, its style_attributes when is_tagged is true, and rating -
+# always present, either null or {rating, note, rated_at} (always
+# present so the frontend never has to check whether the key exists -
+# see DECISIONS.md). 404 if no book has this id. Exists so a single book
+# can be looked up by id, e.g. from a search result, before requesting
+# its recommendations.
 @app.get("/books/{book_id}")
 def get_book(book_id: int):
     with get_connection() as conn, conn.cursor() as cur:
@@ -110,9 +113,16 @@ def get_book(book_id: int):
         )
         style_attributes = cur.fetchone()
 
+        cur.execute(
+            "SELECT rating, note, rated_at FROM book_ratings WHERE book_id = %(book_id)s",
+            {"book_id": book_id},
+        )
+        rating = cur.fetchone()
+
     book["is_tagged"] = style_attributes is not None
     if style_attributes is not None:
         book["style_attributes"] = style_attributes
+    book["rating"] = rating  # None (-> JSON null) if the book isn't rated
     return book
 
 
@@ -128,7 +138,9 @@ def build_bookstore_search_url(title: str, author: str) -> str:
 # Takes a book id from the path, an optional genre filter (any/same/
 # different - "any" is the default, see DECISIONS.md), and a limit.
 # Returns the `limit` most style-similar tagged books to it, each with a
-# similarity score, a rationale, and a bookstore search link. 404 if the
+# similarity score, a rationale, a bookstore search link, and the book's
+# rating (null if unrated). The rating is shown only - it never changes
+# the score or the order (see DECISIONS.md). 404 if the
 # book does not exist. 409 if it exists but has no style attributes yet -
 # there is nothing to compare against. Exists as the core recommendation
 # endpoint of the product.
@@ -164,13 +176,17 @@ def get_recommendations(
                 },
             )
 
+        # LEFT JOIN on ratings: an unrated candidate still has to come
+        # back (with rating/note as NULL), unlike an untagged one.
         candidate_columns = """
             SELECT b.id, b.title, b.author, b.genre, b.cover_url,
                    bsa.sentence_length, bsa.description_density, bsa.dialogue_ratio,
                    bsa.pov, bsa.is_present_tense, bsa.tone, bsa.pacing,
-                   bsa.vocabulary_complexity, bsa.is_nonlinear, bsa.has_humor
+                   bsa.vocabulary_complexity, bsa.is_nonlinear, bsa.has_humor,
+                   br.rating, br.note
             FROM books b
             JOIN book_style_attributes bsa ON bsa.book_id = b.id
+            LEFT JOIN book_ratings br ON br.book_id = b.id
         """
         if genre == "same":
             cur.execute(
@@ -205,6 +221,11 @@ def get_recommendations(
                 "author": candidate["author"],
                 "genre": candidate["genre"],
                 "cover_url": candidate["cover_url"],
+                "rating": (
+                    {"rating": candidate["rating"], "note": candidate["note"]}
+                    if candidate["rating"] is not None
+                    else None
+                ),
             },
             "similarity_score": round(score, 3),
             "rationale": rationale,
@@ -304,3 +325,34 @@ def set_style_attributes(book_id: int, attributes: StyleAttributesPut):
         saved_attributes = cur.fetchone()
         conn.commit()
     return saved_attributes
+
+
+# Takes a book id from the path and a rating with an optional note (see
+# RatingIn in schemas.py for validation - a blank note arrives here as
+# None). Saves it - creating the book_ratings row if the book has never
+# been rated, or replacing it if it has, same save-or-replace meaning as
+# the style-attributes PUT above. rated_at is reset on every save.
+# Returns the saved row. 404 if the book doesn't exist. Any book can be
+# rated, tagged or not (see DECISIONS.md).
+@app.put("/books/{book_id}/rating")
+def set_rating(book_id: int, rating: RatingIn):
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM books WHERE id = %(book_id)s", {"book_id": book_id})
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        cur.execute(
+            """
+            INSERT INTO book_ratings (book_id, rating, note)
+            VALUES (%(book_id)s, %(rating)s, %(note)s)
+            ON CONFLICT (book_id) DO UPDATE SET
+                rating = EXCLUDED.rating,
+                note = EXCLUDED.note,
+                rated_at = now()
+            RETURNING book_id, rating, note, rated_at
+            """,
+            {"book_id": book_id, **rating.model_dump()},
+        )
+        saved_rating = cur.fetchone()
+        conn.commit()
+    return saved_rating

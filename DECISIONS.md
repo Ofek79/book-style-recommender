@@ -475,3 +475,52 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 **Note on semantics:** `tagged_by` records who saved the row last. Saving a book from the tagging UI marks the whole row `'manual'`, even if some values started as LLM output - saving through the form means all 10 values were seen and accepted.
 
 **Reasoning:** Who tagged a book is a fact about that row, so it belongs on the row - same principle as tagging status being derived from the join and not from a separate flag (2026-09-11). It makes the comparison set correct for future books too, and can be checked directly with SQL.
+
+---
+
+## 2026-10-22 — `GET /books` callers page with `offset` (revisits the 2026-10-13 entry)
+
+**Decision:** Every caller that needs more than one page of `GET /books` - the search screen (`App.jsx`), the untagged list (`TaggingScreen.jsx`) and `compare_llm_tagging.py` - now loops over `offset` in pages of 100 (the API's `le=100` cap) until a page comes back short. The API itself is unchanged.
+
+**What prompted this:** The 2026-10-13 entry raised the default `limit` to 100 and said "revisit if the catalog ever approaches the 100 cap". The bulk run took the catalog to 136. Every one-call `?limit=100` caller silently stopped at the 100th book - in `compare_llm_tagging.py` this cut 36 books out of the comparison set, and on the two screens a book past the 100th (in title order) could never be found or tagged.
+
+**Rejected alternatives:**
+- **Raising the API's `le=100` cap.** Moves the same silent cutoff to a bigger number - the next catalog growth breaks it again.
+- **Real pagination UI ("next" / "previous").** The 2026-10-13 reasoning still holds: at ~150 books, loading everything in a few requests is fine, and page controls would add frontend state for no real benefit.
+
+**Reasoning:** The loop is a few lines, works at any catalog size, and is the same pattern in all three places - one thing to understand, not three.
+
+---
+
+## 2026-10-22 — Reader ratings: a separate `book_ratings` table, 1:1 with `books`
+
+**Decision:** A 1-5 star rating and an optional free-text note per book, stored in a new table:
+`book_ratings (book_id INTEGER PRIMARY KEY REFERENCES books (id) ON DELETE CASCADE, rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5), note TEXT, rated_at TIMESTAMPTZ NOT NULL DEFAULT now())`.
+- A book counts as rated if and only if a row exists - no `is_rated` flag, same principle as tagging (2026-09-11).
+- Any book can be rated, tagged or not. Rating and tagging are independent facts.
+- `PUT /books/{id}/rating` saves or replaces the rating (`ON CONFLICT`, like style attributes), `404` if the book doesn't exist. Validated by a new `RatingIn` model in `schemas.py`. A blank or whitespace-only note is stored as `NULL`, so "no note" has one form, not two.
+- `GET /books/{id}` always includes a `rating` key: `null`, or `{rating, note, rated_at}`.
+- Each item from `GET /books/{id}/recommendations` gets `book.rating`: `null`, or `{rating, note}`.
+- UI: a rating form (5 radio buttons + a note box) in the selected book's section of the main screen, pre-filled when the book is already rated. Each recommendation shows the rating as plain-text stars (★★☆☆☆) with the note, or nothing if unrated. No library.
+- No delete endpoint, no length limit on `note`, and no rating in search results - not needed yet.
+
+**Rejected alternatives:**
+- **`rating` / `note` columns on `books`.** Most books will never be rated, so most rows would carry two `NULL`s. And "is this book rated" would become "is this column non-null" instead of "does a row exist" - a different rule from tagging for the same kind of fact.
+- **A history table (many ratings per book).** Every read would need a "latest rating per book" query, for a need nobody has stated.
+- **A `user_id` column now.** Users and login are out of scope. When they come, the change is known: add `user_id` and make the primary key `(user_id, book_id)`. Adding it now would mean a column with one fixed value and nothing to check it against.
+- **Leaving `rating` out of `GET /books/{id}` for unrated books** (like `style_attributes`, which is only present when tagged). The frontend would have to check whether the key exists before reading it. Always present, sometimes `null`, is simpler to use. This is knowingly inconsistent with `style_attributes`, which is left as it is rather than changing a working response shape.
+- **`DELETE /books/{id}/rating`.** A rating can be changed but not removed. Deleting it would also need `DELETE` added to the CORS allow-list. Add both if the need actually comes up.
+
+**Reasoning:** Same shape as `book_style_attributes`, so nothing new to explain: a 1:1 extension table where the row's existence is the fact.
+
+---
+
+## 2026-10-22 — Ratings don't affect similarity or ranking (for now)
+
+**Decision:** A rating is shown next to a recommendation but has no effect on its score or position. `similarity.py` is unchanged. A book rated 1 star appears exactly where it would appear unrated - not hidden, not moved down, not removed.
+
+**Rejected alternatives:**
+- **Hiding or demoting low-rated books.** The product recommends by writing style. "I disliked this book" is a different signal from "this book's style isn't similar", and mixing them in silently would make a recommendation's score mean two things at once and its rationale incomplete.
+- **Learning attribute weights from ratings now.** A handful of ratings is noise, the same reason the weights started equal (2026-09-11). Revisit after about 20 ratings.
+
+**Reasoning:** Keeps the score explainable: the score is style similarity, and the rating is shown next to it as separate information for the reader to weigh.
