@@ -554,23 +554,47 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 
 ---
 
-## 2026-10-22 — Fonts: Frank Ruhl Libre + Assistant, loaded from Google Fonts
+## 2026-10-22 — Fonts: David Libre + Assistant, loaded from Google Fonts
 
-**Decision:** Headings in Frank Ruhl Libre (a Hebrew serif in the tradition of Hebrew book printing), body text in Assistant (a clean, very readable Hebrew sans-serif). Both also cover Latin, so English titles match. Loaded with a `<link>` to Google Fonts in `index.html`, with system fallbacks (`"David", serif` / `"Segoe UI", sans-serif`) so the page still reads if the fonts don't load.
+**Decision:** Headings in David Libre (a digital revival of David, the classic Hebrew serif of books and newspapers), weight 700 only. Body text in Assistant (a clean, very readable Hebrew sans-serif), weights 400 / 600 / 700. Both also cover Latin, so English titles match. Loaded with a `<link>` to Google Fonts in `index.html`, with system fallbacks (`"David", serif` / `"Segoe UI", sans-serif`) so the page still reads if the fonts don't load. The main heading is sized with `clamp(2.25rem, 5vw, 3.25rem)` so it stands out at any width.
 
-**Rejected alternative:** Self-hosting the font files in `public/fonts/` with `@font-face`. No external request and works offline, but adds binary files and a folder. The user chose Google Fonts: simpler, and the site doesn't need to work offline.
+**How it was chosen (changed the same day):** The first pick was Frank Ruhl Libre. Once it was on screen, the user didn't like it and found the main heading not prominent enough. Three alternatives were compared side by side in a throwaway preview page: Noto Serif Hebrew (modern, heaviest, many weights), Suez One (vintage display face, one weight), and David Libre (most traditional and bookish, but quietest). The user chose David Libre. It's the least bold of the three, which is why the main heading was also made larger.
+
+**Rejected alternatives:**
+- **Frank Ruhl Libre** - didn't look right in use.
+- **Noto Serif Hebrew / Suez One** - compared and not chosen.
+- **Self-hosting the font files** in `public/fonts/` with `@font-face`. No external request and works offline, but adds binary files and a folder. The user chose Google Fonts: simpler, and the site doesn't need to work offline.
 
 **Cost accepted:** one request to an external service on page load.
 
 ---
 
-## 2026-10-22 — Star rating input: hidden radio buttons styled as stars; score shown as a percentage
+## 2026-10-22 — Colors: a tonal scale, dark shades only for text and small accents
 
-**Decision:** The clickable stars in the rating form are five real radio inputs, visually hidden, each with a `<label>` drawn as a star. Recommendations show the similarity score as a percentage ("93% התאמה") instead of a 0-1 decimal. The API still returns the decimal - the conversion is display only.
+**Decision:** The palette is a scale of shades of the same two hues plus warm neutrals, defined as tokens in `base.css`:
+- green 50 / 100 / 300 / 600 / 800
+- red 50 / 300 / 700
+- neutrals: paper `#FDFBF7`, white, border, ink-muted, ink
 
-**Rejected alternative (stars):** `<span>` stars with `onClick`. Arrow-key navigation, Tab order, and screen-reader wording ("3 of 5") would all have to be rebuilt by hand with ARIA attributes. Radio inputs already provide all of it. Only the look changes.
+The rule: **dark shades (green-600/800, red-700, ink) only for text and small accents** (headings, the primary button, stars, links, focus, error text). **Light shades (50-300) for backgrounds, borders and decoration.** Every shade used for text passes WCAG AA (4.5:1) on every background it's used on - the lowest pair is green-600 on green-50, 5.3:1. Shades 50-300 never carry text, so they have no contrast requirement.
 
-**Reasoning (percentage):** "93% התאמה" reads at a glance. "0.925" needs knowing the scale. Sorting still happens on the full-precision score on the server (2026-09-12), so this changes nothing but the label.
+Applied to the specific elements:
+- the header band is green-50 (very light), with the title as the only dark thing in it
+- the recommendation card's spine is a thin 3px line in red-300
+- section headings have no underline
+- list markers are green-300
+- a ❦ fleuron in red-300 separates sections
+
+**What prompted this:** The first version used only one shade per color (one dark green, one dark red, one cream). With nothing in between, every colored element was equally loud - the colors fought each other and there was no hierarchy. The one element that worked was the "93% התאמה" tag, a light green fill with dark green text - the pattern this scale generalizes. The background was also changed from cream (`#F6EFE0`) to a much lighter off-white, on the user's request.
+
+**Rejected alternatives:**
+- **A dark green header band** ("leather binding") - the most dominant thing on screen, competing with the content.
+- **A 5px dark red card spine** - too heavy for what is a decorative edge.
+- **A red underline under section headings** - redundant once headings have their own weight.
+- **Red list markers** - loud on every rationale line.
+- **Adding new colors** for variety. More hues would make the fighting worse. More shades of the same two keep the identity and add hierarchy.
+
+**Reasoning:** Hierarchy comes from contrast between dark and light, not from more color. When only headings, the main button and small accents are dark, the eye goes to what matters first, and the rest of the page recedes.
 
 ---
 

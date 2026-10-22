@@ -1,0 +1,15 @@
+/* The list of recommendation cards: no bullets, even spacing between
+   cards. Still a real <ul>, so screen readers announce "list, N items". */
+.recommendation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* The grid gap does the spacing - cancel the default list spacing from
+   base.css so it isn't added twice. */
+.recommendation-list > li + li {
+  margin-block-start: 0;
+}

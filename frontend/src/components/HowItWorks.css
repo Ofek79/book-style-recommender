@@ -1,0 +1,110 @@
+/* "How it works" panel shown before the first search: a soft green
+   panel with three numbered steps and example books to try. Kept compact
+   so the whole home screen - including the example books, the part that
+   matters most - fits on one normal laptop screen without scrolling. */
+
+.how-it-works {
+  background-color: var(--color-green-50);
+  border: 1px solid var(--color-green-100);
+  border-radius: 8px;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  font-size: 0.97rem;
+}
+
+.how-it-works__title {
+  font-size: 1.2rem;
+  margin-block-end: var(--space-2);
+}
+
+/* ---- Numbered steps ---------------------------------------------------- */
+
+/* The default list numbers are replaced by a CSS counter, so each number
+   can sit in its own small round badge (same light fill / dark text
+   pattern as the match tag). On a phone the steps stack; on a wider
+   screen they sit side by side in three columns (see the media query
+   below), which saves most of the panel's height. */
+.how-it-works__steps {
+  list-style: none;
+  padding: 0;
+  margin-block: 0 var(--space-3);
+  counter-reset: step;
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  line-height: 1.55;
+}
+
+.how-it-works__step {
+  counter-increment: step;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* The grid gap does the spacing - cancel the default list spacing from
+   base.css so it isn't added twice. */
+.how-it-works__step + .how-it-works__step {
+  margin-block-start: 0;
+}
+
+.how-it-works__step::before {
+  content: counter(step);
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+}
+
+.how-it-works__step strong {
+  color: var(--color-green-800);
+}
+
+.how-it-works__ratings {
+  color: var(--color-ink-muted);
+  margin-block-end: var(--space-2);
+}
+
+/* ---- "Try for example" --------------------------------------------------- */
+
+.how-it-works__examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--color-green-100);
+}
+
+.how-it-works__examples-label {
+  font-weight: 600;
+  color: var(--color-green-800);
+}
+
+/* Overrides the default (primary) button: a quiet chip, not a main
+   action - the search button stays the one strong button on screen. */
+.how-it-works__example {
+  font-weight: 600;
+  color: var(--color-green-800);
+  background-color: var(--color-white);
+  border: 1px solid var(--color-green-300);
+  border-radius: 999px;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-3);
+}
+
+.how-it-works__example:hover {
+  background-color: var(--color-green-100);
+}
+
+/* Three steps side by side once there's room for them. */
+@media (min-width: 40rem) {
+  .how-it-works__steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

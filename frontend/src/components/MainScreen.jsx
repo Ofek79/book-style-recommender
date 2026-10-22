@@ -8,6 +8,7 @@ import { useState } from "react";
 import { API_URL, fetchAllPages } from "../api";
 import BookResults from "./BookResults";
 import GenreFilter from "./GenreFilter";
+import HowItWorks from "./HowItWorks";
 import RatingForm from "./RatingForm";
 import RecommendationList from "./RecommendationList";
 import SearchForm from "./SearchForm";
@@ -38,16 +39,20 @@ export default function MainScreen() {
   // Takes a search term. Fetches every matching book (all pages - see
   // fetchAllPages in api.js; an empty search matches the whole catalog)
   // and stores them in searchResults, or flags searchStatus as "error"
-  // on failure. Exists as the one place that knows how to search books.
+  // on failure. Also returns the books (or null on failure), so a caller
+  // like handleTryExample can act on the results right away. Exists as
+  // the one place that knows how to search books.
   async function searchBooks(term) {
     setSearchStatus("loading");
     try {
       const books = await fetchAllPages("/books", { search: term });
       setSearchResults(books);
       setSearchStatus("idle");
+      return books;
     } catch {
       setSearchResults(null);
       setSearchStatus("error");
+      return null;
     }
   }
 
@@ -103,6 +108,21 @@ export default function MainScreen() {
     searchBooks(searchTerm);
   }
 
+  // Takes an example title from HowItWorks. Searches for it exactly as
+  // if the user had typed it, then picks the book whose title matches
+  // exactly - one click straight to its recommendations. Finds the book
+  // by title through the normal search, not by a hardcoded id, so it
+  // works on any database. If no exact match comes back, the user just
+  // sees the search results, as after any search.
+  async function handleTryExample(title) {
+    setSearchTerm(title);
+    const books = await searchBooks(title);
+    const match = books && books.find((book) => book.title === title);
+    if (match) {
+      selectBook(match.id);
+    }
+  }
+
   // Takes the rating just saved by RatingForm. Stores it on
   // selectedBook, so the "your rating" line updates right away without
   // re-fetching the book.
@@ -127,6 +147,12 @@ export default function MainScreen() {
         onSearchTermChange={setSearchTerm}
         onSubmit={handleSearchSubmit}
       />
+      {/* Only before anything has happened: no search yet (or one in
+          flight) and no book picked. Disappears as soon as there's
+          something real to show. */}
+      {searchResults === null && searchStatus === "idle" && selectedBook === null && (
+        <HowItWorks onTryExample={handleTryExample} />
+      )}
       <BookResults
         status={searchStatus}
         results={searchResults}
