@@ -2,6 +2,7 @@
 
 import "./RecommendationList.css";
 import RecommendationCard from "./RecommendationCard";
+import StatusMessage from "./StatusMessage";
 
 // Takes the recommendations request's status and its results (null | []
 // | recommendations). Renders the right message for loading/error/
@@ -11,19 +12,25 @@ import RecommendationCard from "./RecommendationCard";
 // filter (see DECISIONS.md).
 export default function RecommendationList({ status, recommendations }) {
   if (status === "loading") {
-    return <p>טוען המלצות...</p>;
+    return <StatusMessage variant="loading">מחפשים ספרים בסגנון דומה</StatusMessage>;
   }
   if (status === "not_tagged") {
-    return <p>הספר הזה עדיין לא תויג, ולכן אין לו המלצות.</p>;
+    return (
+      <StatusMessage variant="empty">
+        את הספר הזה עוד לא תייגנו, ולכן אין לו המלצות. אפשר לתייג אותו במסך "תיוג ספרים".
+      </StatusMessage>
+    );
   }
   if (status === "error") {
-    return <p>שגיאה בטעינת ההמלצות.</p>;
+    return <StatusMessage variant="error">טעינת ההמלצות נכשלה. ודאו שהשרת רץ ונסו שוב.</StatusMessage>;
   }
   if (recommendations === null) {
     return null; // no book selected yet
   }
   if (recommendations.length === 0) {
-    return <p>לא נמצאו המלצות בסינון הזה. נסו "הכל".</p>;
+    return (
+      <StatusMessage variant="empty">אין המלצות בסינון הזה. נסו לבחור "הכל".</StatusMessage>
+    );
   }
   return (
     <ul className="recommendation-list">

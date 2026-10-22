@@ -19,7 +19,9 @@ export default function SearchForm({ searchTerm, onSearchTermChange, onSubmit })
         // label for screen readers - aria-label names the field.
         aria-label="חיפוש ספר לפי שם או מחבר"
       />
-      <button type="submit">חיפוש</button>
+      <button className="search-form__button" type="submit">
+        חיפוש
+      </button>
     </form>
   );
 }

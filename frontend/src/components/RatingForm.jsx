@@ -1,20 +1,18 @@
-// Rating form for the selected book on the main screen.
+// Rating form for the open book: one row with clickable stars, a note,
+// and a save button.
 
 import { useState } from "react";
 
 import { API_URL } from "../api";
-import Stars from "./Stars";
-
-// The rating scale shown as radio buttons below - same 1-5 as the CHECK
-// constraint in db/schema.sql.
-const RATING_VALUES = [1, 2, 3, 4, 5];
+import "./RatingForm.css";
+import StarRatingInput from "./StarRatingInput";
 
 // Takes a book id, the book's current rating (null | {rating, note}),
-// and a callback for after a successful save. Renders 1-5 radio buttons
-// and a note box, pre-filled from currentRating, and saves them with
-// PUT /books/{id}/rating. Holds its own form state - it's only the
-// draft until saved; MainScreen owns the saved rating. Works for any
-// book, tagged or not (see DECISIONS.md).
+// and a callback for after a successful save. Renders the stars and a
+// one-line note, pre-filled from currentRating, and saves them with
+// PUT /books/{id}/rating. Holds its own form state - it's only the draft
+// until saved; MainScreen owns the saved rating. Works for any book,
+// tagged or not (see DECISIONS.md).
 export default function RatingForm({ bookId, currentRating, onSaved }) {
   const [rating, setRating] = useState(currentRating ? currentRating.rating : null);
   const [note, setNote] = useState(currentRating && currentRating.note ? currentRating.note : "");
@@ -43,33 +41,40 @@ export default function RatingForm({ bookId, currentRating, onSaved }) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <fieldset>
-        <legend>{currentRating ? "עדכון הדירוג שלך" : "דרגו את הספר"}</legend>
-        {RATING_VALUES.map((value) => (
-          <label key={value}>
-            <input
-              type="radio"
-              name="rating"
-              value={value}
-              checked={rating === value}
-              onChange={() => setRating(value)}
-            />
-            <Stars rating={value} />
-          </label>
-        ))}
-        <label>
-          הערה (אופציונלי)
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} />
-        </label>
-        {/* Disabled until a star count is picked - the server requires one. */}
-        <button type="submit" disabled={rating === null || status === "loading"}>
-          שמירת דירוג
-        </button>
-      </fieldset>
-      {status === "loading" && <p>שומר...</p>}
-      {status === "error" && <p>שגיאה בשמירת הדירוג.</p>}
-      {status === "saved" && <p>הדירוג נשמר.</p>}
+    <form className="rating-form" onSubmit={handleSubmit}>
+      {/* Visible label for sighted users; the stars' own hidden legend
+          names the group for screen readers, so this one is hidden from
+          them to avoid reading it twice. */}
+      <span className="rating-form__label" aria-hidden="true">
+        הדירוג שלך
+      </span>
+      <StarRatingInput value={rating} onChange={setRating} name="rating" label="הדירוג שלך" />
+      <input
+        className="rating-form__note"
+        type="text"
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        placeholder="הערה (אופציונלי)"
+        aria-label="הערה (אופציונלי)"
+      />
+      {/* Disabled until a star count is picked - the server requires one. */}
+      <button type="submit" disabled={rating === null || status === "loading"}>
+        שמירה
+      </button>
+      {/* role="status": a screen reader announces the result of saving
+          without the user having to look for it. */}
+      {status !== "idle" && (
+        <p
+          className={
+            status === "error" ? "rating-form__status rating-form__status--error" : "rating-form__status"
+          }
+          role="status"
+        >
+          {status === "loading" && "שומרים..."}
+          {status === "saved" && "הדירוג נשמר."}
+          {status === "error" && "שמירת הדירוג נכשלה. ודאו שהשרת רץ ונסו שוב."}
+        </p>
+      )}
     </form>
   );
 }

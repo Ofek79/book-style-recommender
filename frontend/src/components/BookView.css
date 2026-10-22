@@ -1,0 +1,86 @@
+/* Book view: replaces the search results once a book is picked. Laid out
+   in rows, not one element per line, so everything down to the rating's
+   save button fits on one laptop screen: [title + author | back], then
+   the rating row, then [recommendations heading | genre filter]. Each row
+   wraps on a narrow screen. */
+
+/* ---- Row 1: title and author, back button at the other end ---------- */
+
+.book-view__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin-block-end: var(--space-3);
+}
+
+/* Title and author share a line; the author wraps under the title only
+   when there isn't room. */
+.book-view__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+}
+
+.book-view__title {
+  margin-block-end: 0;
+}
+
+/* The heading gets focus when the view opens (see BookView.jsx), so
+   keyboard and screen-reader users land on it. It isn't something to
+   click, so no focus ring - the move itself is announced. */
+.book-view__title:focus {
+  outline: none;
+}
+
+.book-view__author {
+  font-size: 1.1rem;
+  color: var(--color-ink-muted);
+  margin-block-end: 0;
+}
+
+/* Overrides the default (primary) button: going back is a secondary
+   action, so it looks like a quiet text link with an arrow. */
+.book-view__back {
+  color: var(--color-green-600);
+  background-color: transparent;
+  border-color: transparent;
+  padding-inline: 0;
+}
+
+.book-view__back:hover {
+  color: var(--color-green-800);
+  background-color: transparent;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* ---- Between the book and its recommendations --------------------- */
+
+/* A printer's fleuron in soft red - decoration only, hidden from screen
+   readers. */
+.book-view__fleuron {
+  text-align: center;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--color-red-300);
+  margin-block: var(--space-4);
+}
+
+/* ---- Row 3: recommendations heading, genre filter at the other end ---- */
+
+.book-view__recommendations-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-block-end: var(--space-3);
+}
+
+.book-view__recommendations-title {
+  font-size: 1.35rem;
+  margin-block-end: 0;
+}

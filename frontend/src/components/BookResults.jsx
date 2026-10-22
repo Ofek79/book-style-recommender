@@ -1,5 +1,7 @@
 // Search results list for the main screen.
 
+import StatusMessage from "./StatusMessage";
+
 // Takes the search request's status, its results (null | []  | books),
 // and a callback for picking a book. Renders the right message for
 // loading/error/no-search-yet/no-results, or the list of matches.
@@ -7,16 +9,20 @@
 // why an untagged book won't have recommendations.
 export default function BookResults({ status, results, onSelectBook }) {
   if (status === "loading") {
-    return <p>מחפש...</p>;
+    return <StatusMessage variant="loading">מחפשים</StatusMessage>;
   }
   if (status === "error") {
-    return <p>שגיאה בחיפוש. ודאו שהשרת רץ.</p>;
+    return <StatusMessage variant="error">החיפוש נכשל. ודאו שהשרת רץ ונסו שוב.</StatusMessage>;
   }
   if (results === null) {
     return null; // no search submitted yet
   }
   if (results.length === 0) {
-    return <p>לא נמצאו ספרים שמתחילים כך.</p>;
+    return (
+      <StatusMessage variant="empty">
+        לא מצאנו ספר שהשם או המחבר שלו מתחילים כך. נסו את תחילת השם בלבד.
+      </StatusMessage>
+    );
   }
   return (
     <ul>

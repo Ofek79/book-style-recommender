@@ -623,6 +623,29 @@ Applied to the specific elements:
 
 ---
 
+## 2026-10-22 — Book view replaces the results; browser Back via the History API, no router
+
+**Decision:** Picking a book on the main screen switches it into a "book view" that replaces the results list (book detail, rating, genre filter, recommendations, and a "חזרה לתוצאות" button). The search box stays at the top in both views, and a new search leaves the book view. Search results and the search term are kept in `MainScreen` state, which stays mounted, so going back shows the same results with no new request - for an empty search (the whole catalog) and a specific one alike. The book view is its own component, `BookView.jsx`.
+
+Browser Back works with the History API, with no library:
+- picking a book calls `history.pushState({ bookId }, "")`, which adds a history entry without reloading the page or changing the URL
+- Back fires a `popstate` event. `MainScreen` listens for it in a `useEffect` (added on mount, removed in its cleanup) and returns to the results.
+- the "חזרה לתוצאות" button calls `history.back()`, so the on-page button and the browser button take exactly the same path, and history can't get out of sync
+- `history.scrollRestoration = "manual"`: the scroll position in the list is saved before opening a book and restored after going back. The browser's automatic restore runs before React re-renders the list, so it can't be relied on.
+
+The view switches immediately on click, with a loading message until the book's details arrive, and an error message if that request fails (it used to fail silently).
+
+**What prompted this:** With 136 books in the list, the book detail and recommendations rendered below it, far out of sight. A click looked like it did nothing, even though both requests returned 200. And since the whole site was one history entry, Back left the site entirely.
+
+**Rejected alternatives:**
+- **React Router.** A new library (rule 6), and for two views within one screen it adds nothing `pushState` doesn't.
+- **Hash routing** (`#book/36` + `hashchange`). Also library-free, but changes the URL for about the same amount of code.
+- **Switching views without touching history.** Fixes the scrolling, but Back would still leave the site.
+
+**Known limit, accepted:** the URL doesn't change, so reloading while in a book view returns to the start screen, and a specific book can't be linked to. A `?book=<id>` URL read on page load would fix both, but nobody asked for it yet.
+
+---
+
 ## 2026-10-22 — Star rating input: hidden radio buttons styled as stars; score shown as a percentage
 
 **Decision:** The clickable stars in the rating form are five real radio inputs, visually hidden, each with a `<label>` drawn as a star. Recommendations show the similarity score as a percentage ("93% התאמה") instead of a 0-1 decimal. The API still returns the decimal - the conversion is display only.
