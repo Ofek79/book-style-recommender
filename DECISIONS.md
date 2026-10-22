@@ -524,3 +524,50 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 - **Learning attribute weights from ratings now.** A handful of ratings is noise, the same reason the weights started equal (2026-09-11). Revisit after about 20 ratings.
 
 **Reasoning:** Keeps the score explainable: the score is style similarity, and the rating is shown next to it as separate information for the reader to weigh.
+
+---
+
+## 2026-10-22 — Frontend split into `src/components/`, plus `src/api.js`; refactor before redesign
+
+**Decision:** `App.jsx` (about 330 lines, and growing with the redesign) is split into one file per component under a new `frontend/src/components/` folder. `App.jsx` keeps only the screen switch. `TaggingScreen.jsx` moves into `components/` too, since it's a screen like `MainScreen`. A new `src/api.js` holds `API_URL`, `PAGE_SIZE` and `fetchAllPages(path)` - the `offset` loop that was written out twice (search and the untagged list). The split is done first, as a pure refactor with no visual change, and committed on its own. The redesign comes after, on the new structure.
+
+**Rejected alternatives:**
+- **Keeping one `App.jsx`.** Every component and its CSS would land in one file that's hard to navigate and hard to explain piece by piece.
+- **Splitting and redesigning in one step.** If something breaks, it's unclear whether the split or the new styles caused it. Two commits keep each diff reviewable on its own.
+- **Leaving the `offset` loop duplicated.** Two copies of the same paging logic can drift apart - the same reason `api_client.py` was extracted on the backend (2026-10-19).
+
+**Reasoning:** One component per file is the standard React layout a reviewer expects. It makes each piece small enough to defend line by line, and gives each component an obvious home for its own CSS.
+
+---
+
+## 2026-10-22 — Styling: plain CSS, a shared `base.css` plus one CSS file per component
+
+**Decision:** Plain CSS files, imported by Vite with no library. `src/styles/base.css` holds the design tokens (CSS custom properties for colors, spacing, fonts, radius), a minimal reset, base typography, and shared styles for buttons, inputs and focus. Each component gets a CSS file next to it (e.g. `BookCard.css`), with BEM-style class names prefixed by the component (`book-card`, `book-card__title`). All layout uses logical properties (`margin-inline-start`, `padding-inline`, `text-align: start`), never `left`/`right`, so direction comes from `dir="rtl"`. Titles and author names are wrapped in `<bdi>` so English text inside a Hebrew page keeps its own direction.
+
+**Rejected alternatives:**
+- **CSS Modules.** Built into Vite and scope class names automatically, but add a concept to explain (`styles.card`). At about a dozen components, a name prefix avoids collisions just as well.
+- **One big stylesheet.** It would reach around 500 lines with no clear owner for each rule.
+- **Inline `style` props.** No `:hover`, `:focus-visible` or media queries.
+- **A UI or CSS framework (Tailwind, a component kit).** Excluded by rule 6.
+
+**Accessibility baseline:** text contrast checked against WCAG AA (4.5:1 for normal text), a visible `:focus-visible` outline on every interactive element, everything reachable by keyboard through native `button` / `a` / `input` elements, and animation turned off under `prefers-reduced-motion`.
+
+---
+
+## 2026-10-22 — Fonts: Frank Ruhl Libre + Assistant, loaded from Google Fonts
+
+**Decision:** Headings in Frank Ruhl Libre (a Hebrew serif in the tradition of Hebrew book printing), body text in Assistant (a clean, very readable Hebrew sans-serif). Both also cover Latin, so English titles match. Loaded with a `<link>` to Google Fonts in `index.html`, with system fallbacks (`"David", serif` / `"Segoe UI", sans-serif`) so the page still reads if the fonts don't load.
+
+**Rejected alternative:** Self-hosting the font files in `public/fonts/` with `@font-face`. No external request and works offline, but adds binary files and a folder. The user chose Google Fonts: simpler, and the site doesn't need to work offline.
+
+**Cost accepted:** one request to an external service on page load.
+
+---
+
+## 2026-10-22 — Star rating input: hidden radio buttons styled as stars; score shown as a percentage
+
+**Decision:** The clickable stars in the rating form are five real radio inputs, visually hidden, each with a `<label>` drawn as a star. Recommendations show the similarity score as a percentage ("93% התאמה") instead of a 0-1 decimal. The API still returns the decimal - the conversion is display only.
+
+**Rejected alternative (stars):** `<span>` stars with `onClick`. Arrow-key navigation, Tab order, and screen-reader wording ("3 of 5") would all have to be rebuilt by hand with ARIA attributes. Radio inputs already provide all of it. Only the look changes.
+
+**Reasoning (percentage):** "93% התאמה" reads at a glance. "0.925" needs knowing the scale. Sorting still happens on the full-precision score on the server (2026-09-12), so this changes nothing but the label.
