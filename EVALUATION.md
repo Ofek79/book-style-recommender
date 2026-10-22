@@ -1,6 +1,6 @@
 # LLM auto-tagging evaluation
 
-Two full runs, both 2026-10-19, same model (`models/gemini-3.8-flash`), same 36-book catalog, plus one targeted 8-book experiment on 2026-10-20 ([`title_original` vs. `is_present_tense`](#experiment-title_original-vs-is_present_tense-2026-10-20)). Read the [Methodology note](#methodology-note) before trusting either run's numbers on their own.
+Three full runs over the same 36 manually-tagged books, same model (`models/gemini-3.8-flash`): Runs 1-2 on 2026-10-19, [Run 3](#run-3-2026-10-22-after-is_present_tense-left-auto-tagging) on 2026-10-22. Plus one targeted 8-book experiment on 2026-10-20 ([`title_original` vs. `is_present_tense`](#experiment-title_original-vs-is_present_tense-2026-10-20)). Read the [Methodology note](#methodology-note) before trusting either run's numbers on their own.
 
 ## Run 1 (baseline, before the `is_nonlinear` prompt fix)
 
@@ -110,9 +110,50 @@ A single run over 29 books is small enough that normal sampling noise moves indi
 
 **Limits:** 8 books is a small sample, but 0/8, all wrong in the same direction, on books the tagger verified against the text, is a clear enough pattern to drop the attribute from auto-tagging. It does not say the model's `False` answers on the other 100 books are wrong - only that they can't be trusted. Their distribution (12/100 present) is plausible for a catalog of mostly classics and literary fiction, and every book tagged present looks correct.
 
+## Run 3 (2026-10-22, after `is_present_tense` left auto-tagging)
+
+**What changed since Run 2** - several things at once, so differences from Run 2 can't be pinned on any single one:
+- `is_present_tense` is no longer asked of the model (see the experiment above and `DECISIONS.md`). It shows as "not compared".
+- First full run at `temperature=0`. Run 2 ran at the model's default `temperature=1.0` (the `temperature` change in `DECISIONS.md` came after Run 2).
+- `title_original` filled in for 9 of the Hebrew-titled books (the 8 from the experiment, plus קרבת דם → *Caught*).
+- One manual tag corrected: הבתולות `is_nonlinear` false → true (the tagger re-checked the book). The model said true, so that one book moved from disagree to agree because the manual tag changed, not the model.
+- The comparison set is now picked by `tagged_by = 'manual'` instead of "every tagged book" (see `DECISIONS.md`). Same 36 books as Runs 1-2. The 100 LLM-tagged books are correctly left out.
+
+**Books:** 32 compared, 4 skipped (all `unknown_book`), against 29 / 7 in Run 2. Newly recognized: קרבת דם (now has `title_original`), לכולנו יש סודות and שקרים פשוטים (no `title_original` - these two already flipped between Runs 1 and 2, so this may be noise or `temperature=0`, not a fix). Because 3 extra books are counted, percentages aren't strictly comparable to Run 2.
+
+| Attribute | Exact match | Within ±1 (numeric only) | vs. Run 2 |
+| --- | --- | --- | --- |
+| has_humor | 88% | — | +2 |
+| pov | 84% | — | -2 |
+| sentence_length | 81% | — | -2 |
+| dialogue_ratio | 62% | — | +7 |
+| is_nonlinear | 62% | — | -4 |
+| vocabulary_complexity | 56% | 97% | -3 / same |
+| description_density | 53% | 94% | +5 / +1 |
+| tone | 53% | 88% | -9 / +2 |
+| pacing | 47% | 81% | -5 / -5 |
+| is_present_tense | not compared | — | removed from auto-tagging |
+
+**`is_nonlinear` across runs: 45% → 66% → 62%.** The prompt fix happened between Runs 1 and 2, so the real jump is Run 1 → Run 2 (+21). Run 2 → Run 3 (-4) is within the noise band measured above. Comparing Run 1 directly to Run 3 (+17) is accurate as a total, but mixes the prompt fix with everything else that changed since.
+
+**`is_nonlinear` still has a one-way bias.** Of the 12 disagreements, **10 are manual = false, LLM = true** (*The Road*, *The Da Vinci Code*, עוזרת הבית, הקולגה, רוחות הזעם, and others). Only 2 go the other way. That's the same shape as the `is_present_tense` failure: not random noise, but the model systematically reading these books as nonlinear where the manual tagger doesn't. Unlike tense, this could still be a definition gap, not missing knowledge - not tested yet.
+
+**Every other move is within the noise band** (0-15% per-answer drift between identical calls, see above). `tone` -9 is the largest. Don't read it as a regression without another run.
+
+**The 4 skipped books:**
+
+| Title | `author` | `title_original` | Likely reason |
+| --- | --- | --- | --- |
+| סטילר | שרון חיון גינת | *(empty)* | Israeli author writing in Hebrew - there's no original-language title to give. The model likely doesn't know her books at all. `title_original` can't fix this. |
+| עמנואל | שרון חיון גינת | *(empty)* | Same as above. |
+| המלך דוד | שרון חיון גינת | *(empty)* | Same as above. |
+| Nobody's fool | Harlan Coben | *(empty)* | Too recent. The book is real - verified by the tagger: published March 2025, book 2 of Coben's Sami Kierce series, ~53k Goodreads ratings. (A first draft of this table wrongly called it a likely data error.) Probably too new for the model's training data to cover well. |
+
 ## Practical conclusion (updated)
 
 - `is_present_tense` is not reliable from LLM auto-tagging (see the experiment above) - manual only.
-- `title_original` has now been tested on 8 books: it helps recognition (1 book went from `unknown_book` to tagged) but does not fix attributes the model simply doesn't know. It still hasn't been tried on the other `unknown_book` books listed above (קרבת דם and the rest).
+- `is_nonlinear` is the next candidate for the same kind of check: 62%, with disagreements running 10-to-2 in one direction.
+- **Auto-tagging is unreliable for recently published books, not only niche ones.** *Nobody's Fool* (Harlan Coben, March 2025) is a bestselling author's widely-read book, yet it comes back `unknown_book` - most likely because it's newer than most of what the model learned from. So "the model doesn't recognize it" has at least two different causes in this catalog: books it was never likely to see (local Hebrew-language authors like שרון חיון גינת), and books too recent to be well covered. `title_original` helps with neither. This is an inferred explanation, not a tested one - the model's training cutoff isn't documented here. For a new release, plan on tagging it by hand.
+- `title_original` has now been tested on 8 books: it helps recognition (1 book went from `unknown_book` to tagged) but does not fix attributes the model simply doesn't know. In Run 3, קרבת דם (given *Caught*) was recognized for the first time, which fits that - though `temperature=0` changed in the same run. The 3 שרון חיון גינת books are original Hebrew works, so `title_original` doesn't apply to them.
 - `is_nonlinear`'s improvement (45% → 66%) looks like a real effect of the prompt fix, not noise, based on both the direction matching the hypothesis and the magnitude being well outside the ~0-15% noise band measured on unchanged attributes - but should still be confirmed with another run or two rather than treated as final.
 - The attributes with strong, reliable surface signals (pov, sentence_length, has_humor) remain credible to lean on. The numeric attributes are close but noisy; `pacing`'s upward bias (noted in Run 1) hasn't been re-checked for direction in Run 2 and is worth revisiting once multi-run ranges are available.

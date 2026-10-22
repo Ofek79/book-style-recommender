@@ -11,6 +11,11 @@ import { useEffect, useState } from "react";
 // Base URL of the API, injected by Vite from VITE_API_URL (see .env).
 const API_URL = import.meta.env.VITE_API_URL;
 
+// How many books to ask for per GET /books call - the API's own maximum
+// for limit. The catalog is bigger than one page, so the untagged list
+// is loaded page by page (see loadUntaggedBooks).
+const PAGE_SIZE = 100;
+
 // Default values for a fresh style-attributes form: the middle of each
 // 1-5 scale, the most common option for each category, and false for
 // every boolean - except is_present_tense, which starts as null
@@ -86,16 +91,25 @@ export default function TaggingScreen() {
   const [styleForm, setStyleForm] = useState(DEFAULT_STYLE_FORM);
   const [saveStatus, setSaveStatus] = useState("idle"); // idle | loading | error | success
 
-  // Takes nothing. Calls GET /books for the whole catalog and keeps
-  // only the untagged ones (is_tagged === false) - no separate backend
-  // filter needed for this. Exists so the untagged list can be
-  // refreshed after adding or tagging a book, not just on first load.
+  // Takes nothing. Calls GET /books page by page (offset by PAGE_SIZE
+  // until a page comes back short - one call is capped at 100 books)
+  // for the whole catalog, and keeps only the untagged ones
+  // (is_tagged === false) - no separate backend filter needed for this.
+  // Exists so the untagged list can be refreshed after adding or
+  // tagging a book, not just on first load.
   async function loadUntaggedBooks() {
     setUntaggedStatus("loading");
     try {
-      const response = await fetch(`${API_URL}/books?limit=100`);
-      if (!response.ok) throw new Error("books request failed");
-      const books = await response.json();
+      const books = [];
+      let offset = 0;
+      while (true) {
+        const response = await fetch(`${API_URL}/books?limit=${PAGE_SIZE}&offset=${offset}`);
+        if (!response.ok) throw new Error("books request failed");
+        const page = await response.json();
+        books.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
       setUntaggedBooks(books.filter((book) => !book.is_tagged));
       setUntaggedStatus("idle");
     } catch {
