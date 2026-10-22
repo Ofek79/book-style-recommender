@@ -66,38 +66,63 @@ def test_attribute_distance_categorical_equal_and_different():
 # --- describe_attribute -------------------------------------------------
 
 
-# Takes nothing. Checks the exact rationale wording for a numeric
-# attribute, equal and different - this text is what satisfies the
-# product's "readable rationale" requirement, so the wording itself is
-# worth locking down, not just "some string came back".
+# Takes nothing. Checks the exact rationale wording for a numeric (1-5)
+# attribute: equal, and different in both directions - this text is what
+# satisfies the product's "readable rationale" requirement, so the
+# wording itself is worth locking down, not just "some string came back".
+# The arguments are (picked book, recommended book), so 3 -> 5 means the
+# recommendation is darker in tone.
 def test_describe_attribute_numeric():
-    assert similarity.describe_attribute("tone", 3, 3) == "שני הספרים זהים בטון (3)."
-    assert similarity.describe_attribute("tone", 3, 5) == "טון דומה (3 לעומת 5)."
+    assert similarity.describe_attribute("tone", 3, 3) == "האווירה בשניהם לא קלילה ולא כבדה."
+    assert similarity.describe_attribute("tone", 3, 5) == "האווירה כאן כבדה יותר."
+    assert similarity.describe_attribute("tone", 5, 3) == "האווירה כאן קלילה יותר."
 
 
 # Takes nothing. Checks the exact wording for a boolean attribute, both
 # when equal and when different - the "different" branch is the one
 # describe_attribute gained after the original bug (assuming boolean
-# attributes in the rationale are always equal).
+# attributes in the rationale are always equal). A different boolean is
+# worded from the recommended book's side.
 def test_describe_attribute_boolean():
     assert (
         similarity.describe_attribute("is_present_tense", True, True)
-        == "לשני הספרים זמן הווה."
+        == "גם כאן הסיפור מתרחש בזמן הווה."
     )
     assert (
         similarity.describe_attribute("is_present_tense", True, False)
-        == "הבדל בזמן דקדוקי: זמן הווה לעומת זמן עבר."
+        == "כאן הסיפור מסופר בזמן עבר, ולא בזמן הווה כמו בספר שבחרת."
     )
 
 
-# Takes nothing. Checks the exact wording for a plain categorical
-# attribute, equal and different.
-def test_describe_attribute_categorical():
-    assert similarity.describe_attribute("pov", "first", "first") == "שני הספרים גוף ראשון בגוף הסיפור."
+# Takes nothing. Checks the exact wording for pov, the one attribute
+# with no order (so no "more" / "less"), equal and different.
+def test_describe_attribute_pov():
+    assert (
+        similarity.describe_attribute("pov", "first", "first")
+        == "בשניהם אחת הדמויות מספרת את הסיפור בגוף ראשון."
+    )
     assert (
         similarity.describe_attribute("pov", "first", "third_omniscient")
-        == "הבדל בגוף הסיפור: גוף ראשון לעומת גוף שלישי יודע-כל."
+        == "הספר שבחרת מסופר בגוף ראשון, וזה על ידי מספר שיודע הכול."
     )
+
+
+# Takes a text-valued ordered attribute, the picked and recommended
+# values, and the expected sentence. Checks that "more" / "less" follows
+# TEXT_VALUE_ORDER (short < medium < long, low < medium < high) and not,
+# say, alphabetical order of the stored strings - and that a one-step
+# gap (low -> medium) reads the same as a big one.
+@pytest.mark.parametrize(
+    "name, picked, recommended, expected",
+    [
+        ("sentence_length", "short", "long", "המשפטים כאן ארוכים יותר מבספר שבחרת."),
+        ("sentence_length", "long", "short", "המשפטים כאן קצרים יותר מבספר שבחרת."),
+        ("dialogue_ratio", "low", "medium", "כאן יש יותר שיחות בין הדמויות."),
+        ("dialogue_ratio", "high", "medium", "כאן הדמויות מדברות פחות מבספר שבחרת."),
+    ],
+)
+def test_describe_attribute_more_less_follows_value_order(name, picked, recommended, expected):
+    assert similarity.describe_attribute(name, picked, recommended) == expected
 
 
 # --- build_rationale ------------------------------------------------------
@@ -122,9 +147,9 @@ def test_build_rationale_picks_closest_attributes_in_order():
         "has_humor": 0.9,
     }
     assert similarity.build_rationale(attrs, attrs, distances) == [
-        "שני הספרים זהים בצפיפות תיאור (2).",
-        "שני הספרים זהים במורכבות אוצר מילים (2).",
-        "שני הספרים זהים בטון (3).",
+        "שני הספרים חסכוניים בתיאורים.",  # description_density 2
+        "שניהם כתובים בשפה פשוטה.",  # vocabulary_complexity 2
+        "האווירה בשניהם לא קלילה ולא כבדה.",  # tone 3
     ]
 
 
@@ -179,9 +204,9 @@ def test_similarity_known_seed_pair():
     score, rationale = similarity.similarity(OLD_MAN_AND_THE_SEA, THE_ROAD)
     assert score == pytest.approx(0.925)
     assert rationale == [
-        "שני הספרים קצר באורך משפטים.",
-        "שני הספרים נמוך ביחס דיאלוג.",
-        "שני הספרים גוף שלישי מוגבל בגוף הסיפור.",
+        "המשפטים קצרים וחסכוניים, כמו בספר שבחרת.",
+        "גם כאן הדמויות מדברות מעט, ורוב הסיפור הוא תיאור ומחשבות.",
+        "בשניהם עוקבים אחרי הסיפור דרך עיניה של דמות אחת.",
     ]
 
 
@@ -256,4 +281,10 @@ def test_similarity_unknown_attribute_never_in_rationale():
     score, rationale = similarity.similarity(attrs_a, attrs_b)
     assert score == 0.0
     assert len(rationale) == 3
-    assert not any(similarity.ATTRIBUTE_LABELS["is_present_tense"] in sentence for sentence in rationale)
+    # Every sentence describe_attribute can produce for tense. Compared as
+    # whole sentences, not by searching for a word like "זמן", since other
+    # attributes' sentences use it too (pacing: "לוקחים את הזמן").
+    tense_sentences = set(similarity.SAME_VALUE_SENTENCES["is_present_tense"].values()) | set(
+        similarity.BOOLEAN_DIFFERENT_SENTENCES["is_present_tense"].values()
+    )
+    assert not any(sentence in tense_sentences for sentence in rationale)

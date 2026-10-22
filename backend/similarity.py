@@ -26,40 +26,127 @@ WEIGHTS = {
 NUMERIC_ATTRIBUTES = {"description_density", "tone", "pacing", "vocabulary_complexity"}
 NUMERIC_SCALE_MAX_DIFF = 4  # 5 - 1: largest possible difference on a 1-5 scale
 
-# Human-readable label for each attribute, used to build rationale text.
-# Rationale text is user-facing, so it is in Hebrew (see DECISIONS.md);
-# names, comments, and everything else in this file stay English.
-ATTRIBUTE_LABELS = {
-    "sentence_length": "אורך משפטים",
-    "description_density": "צפיפות תיאור",
-    "dialogue_ratio": "יחס דיאלוג",
-    "pov": "גוף הסיפור",
-    "is_present_tense": "זמן דקדוקי",
-    "tone": "טון",
-    "pacing": "קצב",
-    "vocabulary_complexity": "מורכבות אוצר מילים",
-    "is_nonlinear": "מבנה עלילה",
-    "has_humor": "הומור",
-}
+# ---- Rationale wording ---------------------------------------------------
+#
+# Rationale sentences are user-facing, so they are in Hebrew (see
+# DECISIONS.md); names, comments, and everything else in this file stay
+# English. They are written the way a reader would say it to a friend,
+# with no numbers and no system terms (see DECISIONS.md). Every sentence
+# compares two books: the one the reader picked (value_a) and the
+# recommended one shown on the card (value_b, "here" - "כאן").
+#
+# The four attributes that appear in almost every rationale -
+# sentence_length, description_density, dialogue_ratio, pov - each start
+# their sentence differently, so a card's three lines never all open the
+# same way.
 
-# How to word True/False for each boolean attribute in a sentence.
-BOOLEAN_LABELS = {
-    "is_present_tense": {True: "זמן הווה", False: "זמן עבר"},
-    "is_nonlinear": {True: "מבנה לא-ליניארי", False: "מבנה ליניארי"},
-    "has_humor": {True: "הומור", False: "בלי הומור"},
-}
-
-# How to word each stored categorical value (English, from the database -
-# see DECISIONS.md on why the database stays English) in a rationale
-# sentence. Keyed by attribute name, then by the stored value.
-CATEGORICAL_VALUE_LABELS = {
-    "sentence_length": {"short": "קצר", "medium": "בינוני", "long": "ארוך"},
-    "dialogue_ratio": {"low": "נמוך", "medium": "בינוני", "high": "גבוה"},
+# Sentence for when both books have the same value. Keyed by attribute,
+# then by the stored value (English in the database, numbers for the 1-5
+# scales).
+SAME_VALUE_SENTENCES = {
+    "sentence_length": {
+        "short": "המשפטים קצרים וחסכוניים, כמו בספר שבחרת.",
+        "medium": "המשפטים באורך רגיל, לא קצרים ולא ארוכים, כמו בספר שבחרת.",
+        "long": "המשפטים ארוכים וזורמים, כמו בספר שבחרת.",
+    },
+    "description_density": {
+        1: "שני הספרים כמעט בלי תיאורים - הכול עלילה ושיחות.",
+        2: "שני הספרים חסכוניים בתיאורים.",
+        3: "שני הספרים מתארים במידה, בלי להעמיס.",
+        4: "שני הספרים עשירים בתיאורים.",
+        5: "שני הספרים מלאים בתיאורים מפורטים.",
+    },
+    "dialogue_ratio": {
+        "low": "גם כאן הדמויות מדברות מעט, ורוב הסיפור הוא תיאור ומחשבות.",
+        "medium": "גם כאן יש איזון טוב בין שיחות לסיפור.",
+        "high": "גם כאן הסיפור מתקדם הרבה דרך שיחות בין הדמויות.",
+    },
     "pov": {
-        "first": "גוף ראשון",
-        "third_limited": "גוף שלישי מוגבל",
-        "third_omniscient": "גוף שלישי יודע-כל",
-        "second": "גוף שני",
+        "first": "בשניהם אחת הדמויות מספרת את הסיפור בגוף ראשון.",
+        "third_limited": "בשניהם עוקבים אחרי הסיפור דרך עיניה של דמות אחת.",
+        "third_omniscient": "בשניהם יש מספר שיודע הכול ורואה את כל הדמויות.",
+        "second": "בשניהם הסיפור פונה אל הקורא בגוף שני.",
+    },
+    "is_present_tense": {
+        True: "גם כאן הסיפור מתרחש בזמן הווה.",
+        False: "כמו בספר שבחרת, גם כאן הסיפור מסופר בזמן עבר.",
+    },
+    "tone": {
+        1: "שניהם קלילים ומשעשעים באווירה.",
+        2: "האווירה בשניהם די קלילה.",
+        3: "האווירה בשניהם לא קלילה ולא כבדה.",
+        4: "לשניהם אווירה רצינית ודי כבדה.",
+        5: "שניהם אפלים וכבדים.",
+    },
+    "pacing": {
+        1: "שניהם לוקחים את הזמן - קצב איטי ומהורהר.",
+        2: "הקצב בשניהם די רגוע.",
+        3: "הקצב בשניהם מאוזן.",
+        4: "שניהם מתקדמים בקצב מהיר.",
+        5: "שניהם דוהרים קדימה, עם אירוע אחרי אירוע.",
+    },
+    "vocabulary_complexity": {
+        1: "השפה בשניהם פשוטה מאוד ונגישה.",
+        2: "שניהם כתובים בשפה פשוטה.",
+        3: "השפה בשניהם יומיומית, לא פשוטה ולא גבוהה.",
+        4: "שניהם כתובים בשפה עשירה.",
+        5: "שניהם כתובים בשפה גבוהה וספרותית.",
+    },
+    "is_nonlinear": {
+        True: "שניהם קופצים בין זמנים ולא מספרים לפי הסדר.",
+        False: "שני הסיפורים נפרשים לפי סדר הזמן.",
+    },
+    "has_humor": {
+        True: "בשניהם יש חוש הומור.",
+        False: "שניהם רציניים, בלי הומור.",
+    },
+}
+
+# For attributes whose values have a natural order, a difference is one
+# comparative sentence about the recommended book: (sentence if it has
+# MORE than the picked book, sentence if it has LESS). "More" works the
+# same whether the gap is one step or four, so close and far differences
+# read naturally with one rule.
+MORE_LESS_SENTENCES = {
+    "sentence_length": ("המשפטים כאן ארוכים יותר מבספר שבחרת.", "המשפטים כאן קצרים יותר מבספר שבחרת."),
+    "description_density": ("הספר הזה עשיר יותר בתיאורים.", "כאן יש פחות תיאורים מבספר שבחרת."),
+    "dialogue_ratio": ("כאן יש יותר שיחות בין הדמויות.", "כאן הדמויות מדברות פחות מבספר שבחרת."),
+    "tone": ("האווירה כאן כבדה יותר.", "האווירה כאן קלילה יותר."),
+    "pacing": ("הקצב כאן מהיר יותר.", "הקצב כאן איטי יותר."),
+    "vocabulary_complexity": ("השפה כאן עשירה יותר.", "השפה כאן פשוטה יותר."),
+}
+
+# Order of the two text-valued ordered attributes, lowest first, so
+# "more" and "less" can be worked out for them. The 1-5 attributes are
+# already ordered by their number.
+TEXT_VALUE_ORDER = {
+    "sentence_length": ["short", "medium", "long"],
+    "dialogue_ratio": ["low", "medium", "high"],
+}
+
+# How each point of view is worded inside a "picked book vs. this one"
+# sentence - pov has no order, so it can't use "more" / "less".
+POV_PHRASES = {
+    "first": "בגוף ראשון",
+    "third_limited": "דרך עיניה של דמות אחת",
+    "third_omniscient": "על ידי מספר שיודע הכול",
+    "second": "בגוף שני",
+}
+
+# Sentence for a boolean attribute that differs, keyed by the
+# recommended book's value (the picked book's value is then the other one).
+BOOLEAN_DIFFERENT_SENTENCES = {
+    "is_present_tense": {
+        True: "כאן הסיפור מסופר בזמן הווה, ולא בזמן עבר כמו בספר שבחרת.",
+        False: "כאן הסיפור מסופר בזמן עבר, ולא בזמן הווה כמו בספר שבחרת.",
+    },
+    "is_nonlinear": {
+        True: "כאן העלילה קופצת בזמן, בניגוד לספר שבחרת.",
+        False: "כאן העלילה מסופרת לפי הסדר, בלי הקפיצות בזמן של הספר שבחרת.",
+    },
+    "has_humor": {
+        True: "כאן יש הומור, שלא היה בספר שבחרת.",
+        False: "כאן אין את ההומור של הספר שבחרת.",
     },
 }
 
@@ -76,28 +163,28 @@ def attribute_distance(name, value_a, value_b):
     return 0.0 if value_a == value_b else 1.0
 
 
-# Takes one attribute's name and its value in each book. Returns a short
-# sentence describing how the two books compare on that attribute (equal
-# or different both get a sentence - closeness alone doesn't mean
-# equality for a numeric attribute, and "closest" attributes can still
-# differ when two books have little in common). Exists to turn a raw
-# attribute pair into the wording used in a rationale.
+# Takes one attribute's name, its value in the picked book (value_a) and
+# in the recommended book (value_b). Returns one natural sentence
+# comparing the two (equal or different both get a sentence - "closest"
+# attributes can still differ when two books have little in common).
+# Exists to turn a raw attribute pair into the wording used in a
+# rationale. Order matters: value_a must be the picked book, since the
+# sentences say "here" (the recommendation) vs. "the book you picked".
 def describe_attribute(name, value_a, value_b):
-    label = ATTRIBUTE_LABELS[name]
-    if name in NUMERIC_ATTRIBUTES:
-        if value_a == value_b:
-            return f"שני הספרים זהים ב{label} ({value_a})."
-        return f"{label} דומה ({value_a} לעומת {value_b})."
-    if name in BOOLEAN_LABELS:
-        if value_a == value_b:
-            return f"לשני הספרים {BOOLEAN_LABELS[name][value_a]}."
-        return f"הבדל ב{label}: {BOOLEAN_LABELS[name][value_a]} לעומת {BOOLEAN_LABELS[name][value_b]}."
-    # Remaining attributes are plain categorical text (sentence_length,
-    # dialogue_ratio, pov) - translate the stored English value for display.
-    labels = CATEGORICAL_VALUE_LABELS[name]
     if value_a == value_b:
-        return f"שני הספרים {labels[value_a]} ב{label}."
-    return f"הבדל ב{label}: {labels[value_a]} לעומת {labels[value_b]}."
+        return SAME_VALUE_SENTENCES[name][value_a]
+    if name in MORE_LESS_SENTENCES:
+        more_sentence, less_sentence = MORE_LESS_SENTENCES[name]
+        if name in TEXT_VALUE_ORDER:
+            order = TEXT_VALUE_ORDER[name]
+            recommended_has_more = order.index(value_b) > order.index(value_a)
+        else:
+            recommended_has_more = value_b > value_a
+        return more_sentence if recommended_has_more else less_sentence
+    if name == "pov":
+        return f"הספר שבחרת מסופר {POV_PHRASES[value_a]}, וזה {POV_PHRASES[value_b]}."
+    # The rest are booleans (is_present_tense, is_nonlinear, has_humor).
+    return BOOLEAN_DIFFERENT_SENTENCES[name][value_b]
 
 
 # Takes the two books' attribute dicts and the per-attribute distances

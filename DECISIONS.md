@@ -571,3 +571,38 @@ Pinning to a named model (rather than an alias) still means a future Google rele
 **Rejected alternative (stars):** `<span>` stars with `onClick`. Arrow-key navigation, Tab order, and screen-reader wording ("3 of 5") would all have to be rebuilt by hand with ARIA attributes. Radio inputs already provide all of it. Only the look changes.
 
 **Reasoning (percentage):** "93% התאמה" reads at a glance. "0.925" needs knowing the scale. Sorting still happens on the full-precision score on the server (2026-09-12), so this changes nothing but the label.
+
+---
+
+## 2026-10-22 — Rationale sentences: natural reader language, no numbers, varied openings
+
+**Decision:** The rationale sentences in `similarity.py` are rewritten in plain Hebrew, the way a reader would say it to a friend. The algorithm is unchanged - same distances, same score, same 3 closest attributes. Only the wording changed.
+- **No numbers and no system terms.** "טון (3)" or "יחס דיאלוג" mean nothing to a reader. Each value has its own words instead, e.g. tone 1-5 runs from "קלילים ומשעשעים" to "אפלים וכבדים", and dialogue is about "שיחות בין הדמויות".
+- **Every sentence compares two books:** the one the reader picked, and the recommended one on the card ("כאן"). `describe_attribute(name, value_a, value_b)` takes the picked book first - the order matters, and `main.py` passes it that way.
+- **Equal values** get one full sentence per value, in `SAME_VALUE_SENTENCES`.
+- **Different values on an ordered attribute** (sentence length, description, dialogue, tone, pacing, vocabulary) get one comparative sentence about the recommended book: "הקצב כאן מהיר יותר.", "כאן יש פחות תיאורים מבספר שבחרת." The two text-valued ones are ordered by `TEXT_VALUE_ORDER` (short < medium < long, low < medium < high), not by string comparison.
+- **pov** (no order) says both sides: "הספר שבחרת מסופר בגוף ראשון, וזה על ידי מספר שיודע הכול." A different boolean is worded from the recommended book's side.
+- **Varied openings.** The four attributes that dominate rationales each open differently: sentence length "המשפטים... כמו בספר שבחרת", dialogue "גם כאן...", description "שני הספרים...", pov "בשניהם...". So a card's three lines never all start the same way.
+
+**How the four were picked:** By counting, not guessing. Across all 680 top-5 recommendations in the 136-book catalog: dialogue appears in 92% of rationales, sentence length in 89%, description in 60%, pov in 47%, and every other attribute in 6% or less.
+
+**What prompted this:** The user found the old sentences written in the system's language, not a reader's: "שני הספרים בינוני ביחס דיאלוג" is a metric name with a value plugged in. "שני הספרים קצר באורך משפטים" is ungrammatical, because a template filled with an adjective doesn't agree in Hebrew. A first rewrite still started every sentence with "בשניהם", which read like a report.
+
+**Rejected alternatives:**
+- **One template for every attribute ("בשניהם X").** Simple to code, but three identical openings in a row read like generated output.
+- **A separate "similar" sentence for a one-step gap** (the old "טון דומה (3 לעומת 5)"). A comparative ("מהיר יותר") is true for any gap size, so one rule covers close and far differences, with no threshold to define.
+- **Keeping the numbers next to the words.** The 1-5 scale is an internal tagging tool. A reader has no reference for what "3" means.
+
+**Tests:** `test_similarity.py` locks the exact wording, so 6 tests were updated with the new sentences, and one test was added for "more" / "less" ordering (20 tests total). The "never in rationale" test now compares whole sentences, not a keyword, since "זמן" also appears in pacing and plot-structure sentences.
+
+**Noticed while counting, not changed:** 49% of rationales name the same three attributes (sentence length, description, dialogue). When several attributes tie at distance 0, `build_rationale` keeps them in `WEIGHTS` order, and those are the first entries in that dict. So the rationale is correct but may not highlight what's most distinctive about a match (e.g. two books that both have humor). Not investigated further - a separate question.
+
+---
+
+## 2026-10-22 — Star rating input: hidden radio buttons styled as stars; score shown as a percentage
+
+**Decision:** The clickable stars in the rating form are five real radio inputs, visually hidden, each with a `<label>` drawn as a star. Recommendations show the similarity score as a percentage ("93% התאמה") instead of a 0-1 decimal. The API still returns the decimal - the conversion is display only.
+
+**Rejected alternative (stars):** `<span>` stars with `onClick`. Arrow-key navigation, Tab order, and screen-reader wording ("3 of 5") would all have to be rebuilt by hand with ARIA attributes. Radio inputs already provide all of it. Only the look changes.
+
+**Reasoning (percentage):** "93% התאמה" reads at a glance. "0.925" needs knowing the scale. Sorting still happens on the full-precision score on the server (2026-09-12), so this changes nothing but the label.
