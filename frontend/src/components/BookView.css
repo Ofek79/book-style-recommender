@@ -84,3 +84,18 @@
   font-size: 1.35rem;
   margin-block-end: 0;
 }
+
+/* The filter with its one-line explanation right under it, both at the
+   end of the row. */
+.book-view__filter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.book-view__filter-hint {
+  font-size: 0.875rem;
+  color: var(--color-ink-muted);
+  margin-block-end: 0;
+}

@@ -9,13 +9,15 @@ const GENRE_OPTIONS = [
   { value: "different", label: "ז'אנר אחר" },
 ];
 
-// Takes the current genre filter value and a change callback. Renders
-// the any/same/different toggle as one segmented control: hidden radio
-// inputs, each followed by its visible segment. Holds no state of its
-// own - MainScreen owns genreFilter.
-export default function GenreFilter({ value, onChange }) {
+// Takes the current genre filter value, a change callback, and
+// optionally the id of an element that explains the filter. Renders the
+// any/same/different toggle as one segmented control: hidden radio
+// inputs, each followed by its visible segment. aria-describedby links
+// the explanation, so a screen reader reads it along with the filter.
+// Holds no state of its own - MainScreen owns genreFilter.
+export default function GenreFilter({ value, onChange, descriptionId }) {
   return (
-    <fieldset className="genre-filter">
+    <fieldset className="genre-filter" aria-describedby={descriptionId}>
       <legend className="visually-hidden">סינון לפי ז'אנר</legend>
       {GENRE_OPTIONS.map((option) => (
         <label key={option.value} className="genre-filter__option">

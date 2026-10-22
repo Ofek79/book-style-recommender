@@ -6,9 +6,11 @@
 // UI text is Hebrew, same as App.jsx; names, comments, and API calls
 // stay English.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { API_URL, fetchAllPages } from "../api";
+import StatusMessage from "./StatusMessage";
+import "./TaggingScreen.css";
 
 // Default values for a fresh style-attributes form: the middle of each
 // 1-5 scale, the most common option for each category, and false for
@@ -107,6 +109,18 @@ export default function TaggingScreen() {
     loadUntaggedBooks();
   }, []);
 
+  // When a book is picked for tagging, move focus to the tagging form's
+  // title. Focusing an element also scrolls it into view, so the form -
+  // rendered after the list - doesn't open out of sight; and keyboard and
+  // screen-reader users land on it.
+  const tagFormTitleRef = useRef(null);
+  const bookBeingTaggedId = bookBeingTagged ? bookBeingTagged.id : null;
+  useEffect(() => {
+    if (bookBeingTaggedId !== null) {
+      tagFormTitleRef.current.focus();
+    }
+  }, [bookBeingTaggedId]);
+
   // Takes the submit event from the add-book form. Posts newBook to
   // POST /books, then clears the form and refreshes the untagged list
   // so the new book shows up right away. Reads a 409 explicitly (same
@@ -185,218 +199,268 @@ export default function TaggingScreen() {
   }
 
   return (
-    <div>
-      <h2>הוספת ספר</h2>
-      <form onSubmit={handleAddBookSubmit}>
-        <label>
-          כותרת
-          <input
-            type="text"
-            required
-            value={newBook.title}
-            onChange={(event) => setNewBook({ ...newBook, title: event.target.value })}
-          />
-        </label>
-        <label>
-          מחבר
-          <input
-            type="text"
-            required
-            value={newBook.author}
-            onChange={(event) => setNewBook({ ...newBook, author: event.target.value })}
-          />
-        </label>
-        <label>
-          כותרת מקורית (אופציונלי, לספר מתורגם)
-          <input
-            type="text"
-            value={newBook.titleOriginal}
-            onChange={(event) => setNewBook({ ...newBook, titleOriginal: event.target.value })}
-          />
-        </label>
-        <label>
-          ז'אנר (אופציונלי)
-          <input
-            type="text"
-            value={newBook.genre}
-            onChange={(event) => setNewBook({ ...newBook, genre: event.target.value })}
-          />
-        </label>
-        <label>
-          שפה
-          <select
-            value={newBook.language}
-            onChange={(event) => setNewBook({ ...newBook, language: event.target.value })}
+    <div className="tagging">
+      <section className="tagging__panel">
+        <h2 className="tagging__panel-title">הוספת ספר</h2>
+        <form onSubmit={handleAddBookSubmit}>
+          <div className="tagging__fields">
+            <label className="tagging__field">
+              <span className="tagging__field-label">כותרת</span>
+              <input
+                type="text"
+                required
+                value={newBook.title}
+                onChange={(event) => setNewBook({ ...newBook, title: event.target.value })}
+              />
+            </label>
+            <label className="tagging__field">
+              <span className="tagging__field-label">מחבר</span>
+              <input
+                type="text"
+                required
+                value={newBook.author}
+                onChange={(event) => setNewBook({ ...newBook, author: event.target.value })}
+              />
+            </label>
+            <label className="tagging__field">
+              <span className="tagging__field-label">כותרת מקורית (לספר מתורגם)</span>
+              <input
+                type="text"
+                value={newBook.titleOriginal}
+                onChange={(event) => setNewBook({ ...newBook, titleOriginal: event.target.value })}
+              />
+            </label>
+            <label className="tagging__field">
+              <span className="tagging__field-label">ז'אנר (אופציונלי)</span>
+              <input
+                type="text"
+                value={newBook.genre}
+                onChange={(event) => setNewBook({ ...newBook, genre: event.target.value })}
+              />
+            </label>
+            <label className="tagging__field">
+              <span className="tagging__field-label">שפה</span>
+              <select
+                value={newBook.language}
+                onChange={(event) => setNewBook({ ...newBook, language: event.target.value })}
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button type="submit" disabled={addBookStatus === "loading"}>
+            הוספת ספר
+          </button>
+        </form>
+        {/* A short line under the form, not a big message box - the form
+            stays the focus. role="status" so the result is announced. */}
+        {addBookStatus !== "idle" && (
+          <p
+            className={
+              addBookStatus === "error" || addBookStatus === "duplicate"
+                ? "tagging__status tagging__status--error"
+                : "tagging__status"
+            }
+            role="status"
           >
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit">הוספת ספר</button>
-      </form>
-      {addBookStatus === "loading" && <p>שומר...</p>}
-      {addBookStatus === "error" && <p>שגיאה בהוספת הספר. ודאו שכל השדות תקינים.</p>}
-      {addBookStatus === "duplicate" && <p>ספר עם כותרת ומחבר זהים כבר קיים במאגר.</p>}
-      {addBookStatus === "success" && <p>הספר נוסף בהצלחה.</p>}
+            {addBookStatus === "loading" && "שומרים..."}
+            {addBookStatus === "success" && "הספר נוסף, ומופיע עכשיו ברשימת הספרים הלא מתויגים."}
+            {addBookStatus === "duplicate" && "ספר עם אותה כותרת ואותו מחבר כבר קיים במאגר."}
+            {addBookStatus === "error" && "הוספת הספר נכשלה. ודאו שהשדות מלאים ושהשרת רץ."}
+          </p>
+        )}
+      </section>
 
-      <h2>ספרים לא מתויגים</h2>
-      {untaggedStatus === "loading" && <p>טוען...</p>}
-      {untaggedStatus === "error" && <p>שגיאה בטעינת הרשימה. ודאו שהשרת רץ.</p>}
-      {untaggedStatus === "idle" && untaggedBooks !== null && untaggedBooks.length === 0 && (
-        <p>כל הספרים בקטלוג מתויגים.</p>
-      )}
-      {untaggedStatus === "idle" && untaggedBooks !== null && untaggedBooks.length > 0 && (
-        <ul>
-          {untaggedBooks.map((book) => (
-            <li key={book.id}>
-              <button type="button" onClick={() => handleSelectBookToTag(book)}>
-                {book.title} — {book.author}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <section className="tagging__panel">
+        <h2 className="tagging__panel-title">ספרים לא מתויגים</h2>
+        {untaggedStatus === "loading" && (
+          <StatusMessage variant="loading">טוענים את הרשימה</StatusMessage>
+        )}
+        {untaggedStatus === "error" && (
+          <StatusMessage variant="error">טעינת הרשימה נכשלה. ודאו שהשרת רץ ונסו שוב.</StatusMessage>
+        )}
+        {untaggedStatus === "idle" && untaggedBooks !== null && untaggedBooks.length === 0 && (
+          <StatusMessage variant="empty">כל הספרים בקטלוג מתויגים.</StatusMessage>
+        )}
+        {untaggedStatus === "idle" && untaggedBooks !== null && untaggedBooks.length > 0 && (
+          <ul className="tagging__untagged">
+            {untaggedBooks.map((book) => (
+              <li key={book.id}>
+                <button
+                  type="button"
+                  className={
+                    bookBeingTaggedId === book.id
+                      ? "tagging__untagged-book tagging__untagged-book--selected"
+                      : "tagging__untagged-book"
+                  }
+                  onClick={() => handleSelectBookToTag(book)}
+                >
+                  <bdi>{book.title}</bdi> — <bdi>{book.author}</bdi>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {bookBeingTagged && (
-        <section>
-          <h2>
-            תיוג סגנון: {bookBeingTagged.title} — {bookBeingTagged.author}
+        <section className="tagging__panel tagging__panel--wide tagging__panel--active">
+          {/* tabIndex -1: focusable from code (see above), not in the Tab order. */}
+          <h2 className="tagging__panel-title" ref={tagFormTitleRef} tabIndex={-1}>
+            תיוג סגנון: <bdi>{bookBeingTagged.title}</bdi>
           </h2>
+          <p className="tagging__subtitle">
+            <bdi>{bookBeingTagged.author}</bdi>
+          </p>
           <form onSubmit={handleSaveStyleSubmit}>
-            <label>
-              אורך משפטים
-              <select
-                value={styleForm.sentence_length}
-                onChange={(event) => handleStyleFormChange("sentence_length", event.target.value)}
-              >
-                {SENTENCE_LENGTH_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="tagging__fields">
+              <label className="tagging__field">
+                <span className="tagging__field-label">אורך משפטים</span>
+                <select
+                  value={styleForm.sentence_length}
+                  onChange={(event) => handleStyleFormChange("sentence_length", event.target.value)}
+                >
+                  {SENTENCE_LENGTH_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label>
-              צפיפות תיאור ({styleForm.description_density})
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={styleForm.description_density}
-                onChange={(event) =>
-                  handleStyleFormChange("description_density", Number(event.target.value))
-                }
-              />
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">יחס דיאלוג</span>
+                <select
+                  value={styleForm.dialogue_ratio}
+                  onChange={(event) => handleStyleFormChange("dialogue_ratio", event.target.value)}
+                >
+                  {DIALOGUE_RATIO_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label>
-              יחס דיאלוג
-              <select
-                value={styleForm.dialogue_ratio}
-                onChange={(event) => handleStyleFormChange("dialogue_ratio", event.target.value)}
-              >
-                {DIALOGUE_RATIO_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">גוף הסיפור</span>
+                <select
+                  value={styleForm.pov}
+                  onChange={(event) => handleStyleFormChange("pov", event.target.value)}
+                >
+                  {POV_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label>
-              גוף הסיפור
-              <select
-                value={styleForm.pov}
-                onChange={(event) => handleStyleFormChange("pov", event.target.value)}
-              >
-                {POV_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">זמן דקדוקי</span>
+                <select
+                  value={String(styleForm.is_present_tense)}
+                  onChange={(event) =>
+                    handleStyleFormChange("is_present_tense", PRESENT_TENSE_VALUES[event.target.value])
+                  }
+                >
+                  {PRESENT_TENSE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label>
-              זמן דקדוקי
-              <select
-                value={String(styleForm.is_present_tense)}
-                onChange={(event) =>
-                  handleStyleFormChange(
-                    "is_present_tense",
-                    PRESENT_TENSE_VALUES[event.target.value],
-                  )
-                }
-              >
-                {PRESENT_TENSE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">צפיפות תיאור ({styleForm.description_density})</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={styleForm.description_density}
+                  onChange={(event) =>
+                    handleStyleFormChange("description_density", Number(event.target.value))
+                  }
+                />
+              </label>
 
-            <label>
-              טון ({styleForm.tone})
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={styleForm.tone}
-                onChange={(event) => handleStyleFormChange("tone", Number(event.target.value))}
-              />
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">טון ({styleForm.tone})</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={styleForm.tone}
+                  onChange={(event) => handleStyleFormChange("tone", Number(event.target.value))}
+                />
+              </label>
 
-            <label>
-              קצב ({styleForm.pacing})
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={styleForm.pacing}
-                onChange={(event) => handleStyleFormChange("pacing", Number(event.target.value))}
-              />
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">קצב ({styleForm.pacing})</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={styleForm.pacing}
+                  onChange={(event) => handleStyleFormChange("pacing", Number(event.target.value))}
+                />
+              </label>
 
-            <label>
-              מורכבות אוצר מילים ({styleForm.vocabulary_complexity})
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={styleForm.vocabulary_complexity}
-                onChange={(event) =>
-                  handleStyleFormChange("vocabulary_complexity", Number(event.target.value))
-                }
-              />
-            </label>
+              <label className="tagging__field">
+                <span className="tagging__field-label">
+                  מורכבות אוצר מילים ({styleForm.vocabulary_complexity})
+                </span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={styleForm.vocabulary_complexity}
+                  onChange={(event) =>
+                    handleStyleFormChange("vocabulary_complexity", Number(event.target.value))
+                  }
+                />
+              </label>
+            </div>
 
-            <label>
-              <input
-                type="checkbox"
-                checked={styleForm.is_nonlinear}
-                onChange={(event) => handleStyleFormChange("is_nonlinear", event.target.checked)}
-              />
-              מבנה לא-ליניארי
-            </label>
+            <div className="tagging__checks">
+              <label className="tagging__check">
+                <input
+                  type="checkbox"
+                  checked={styleForm.is_nonlinear}
+                  onChange={(event) => handleStyleFormChange("is_nonlinear", event.target.checked)}
+                />
+                מבנה לא-ליניארי
+              </label>
+              <label className="tagging__check">
+                <input
+                  type="checkbox"
+                  checked={styleForm.has_humor}
+                  onChange={(event) => handleStyleFormChange("has_humor", event.target.checked)}
+                />
+                הומור
+              </label>
+            </div>
 
-            <label>
-              <input
-                type="checkbox"
-                checked={styleForm.has_humor}
-                onChange={(event) => handleStyleFormChange("has_humor", event.target.checked)}
-              />
-              הומור
-            </label>
-
-            <button type="submit">שמירת תיוג</button>
+            <button type="submit" disabled={saveStatus === "loading"}>
+              שמירת תיוג
+            </button>
           </form>
-          {saveStatus === "loading" && <p>שומר...</p>}
-          {saveStatus === "error" && <p>שגיאה בשמירת התיוג.</p>}
+          {saveStatus !== "idle" && (
+            <p
+              className={
+                saveStatus === "error" ? "tagging__status tagging__status--error" : "tagging__status"
+              }
+              role="status"
+            >
+              {saveStatus === "loading" && "שומרים..."}
+              {saveStatus === "error" && "שמירת התיוג נכשלה. ודאו שהשרת רץ ונסו שוב."}
+            </p>
+          )}
         </section>
       )}
     </div>
