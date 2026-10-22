@@ -1,0 +1,50 @@
+/* Genre filter as one segmented control: three joined options, the
+   selected one filled. Still three real radio inputs underneath (hidden),
+   so keyboard and screen readers work exactly as before. */
+
+.genre-filter {
+  display: inline-flex;
+  border: 1px solid var(--color-green-300);
+  border-radius: var(--radius);
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+}
+
+.genre-filter__option {
+  display: flex;
+}
+
+/* The visible segment is the span after each hidden input, so its look
+   can follow the input's state with the + selector. */
+.genre-filter__text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-green-600);
+  background-color: var(--color-white);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-3);
+  cursor: pointer;
+}
+
+/* A thin divider between segments, on the start side of every segment
+   but the first. */
+.genre-filter__option + .genre-filter__option .genre-filter__text {
+  border-inline-start: 1px solid var(--color-green-300);
+}
+
+.genre-filter__text:hover {
+  background-color: var(--color-green-50);
+}
+
+.genre-filter__input:checked + .genre-filter__text {
+  color: var(--color-green-800);
+  background-color: var(--color-green-100);
+}
+
+/* Keyboard focus is on the hidden input; draw the ring inside its
+   segment (an outside ring would be cut off by overflow: hidden). */
+.genre-filter__input:focus-visible + .genre-filter__text {
+  outline: 3px solid var(--color-red-700);
+  outline-offset: -3px;
+}

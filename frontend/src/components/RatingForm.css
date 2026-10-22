@@ -1,0 +1,36 @@
+/* Rating form: one row in a soft green panel - label, stars, note, save.
+   Wraps onto more rows on a narrow screen instead of squeezing. */
+
+.rating-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  background-color: var(--color-green-50);
+  border: 1px solid var(--color-green-100);
+  border-radius: 8px;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+}
+
+.rating-form__label {
+  font-weight: 600;
+  color: var(--color-green-800);
+}
+
+/* The note takes whatever room is left on the row, but never shrinks
+   below a usable width - below that it wraps to its own row. */
+.rating-form__note {
+  flex: 1 1 14rem;
+}
+
+.rating-form__status {
+  inline-size: 100%;
+  font-size: 0.95rem;
+  color: var(--color-green-600);
+  margin: 0;
+}
+
+.rating-form__status--error {
+  color: var(--color-red-700);
+}

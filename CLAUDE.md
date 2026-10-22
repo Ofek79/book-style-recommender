@@ -79,10 +79,13 @@ Added on request, outside the original list (all in `DECISIONS.md`):
 component per file): `MainScreen.jsx`, `TaggingScreen.jsx` (moved here from
 `frontend/src/`), `SearchForm.jsx`, `BookResults.jsx`, `GenreFilter.jsx`,
 `RatingForm.jsx`, `RecommendationList.jsx`, `Stars.jsx`, `HowItWorks.jsx`,
-`RecommendationCard.jsx`.
+`RecommendationCard.jsx`, `StatusMessage.jsx`, `BookView.jsx`,
+`StarRatingInput.jsx`.
 Styling: `frontend/src/styles/base.css`, `frontend/src/App.css`, and one CSS
 file next to each component that needs one (`SearchForm.css`,
-`HowItWorks.css`, `RecommendationList.css`, `RecommendationCard.css`, ...).
+`HowItWorks.css`, `RecommendationList.css`, `RecommendationCard.css`,
+`StatusMessage.css`, `BookView.css`, `RatingForm.css`, `StarRatingInput.css`,
+`GenreFilter.css`).
 
 **Environment files:** two separate `.env` files — root (`POSTGRES_*`,
 `DATABASE_URL`, for docker-compose + backend) and `frontend/.env`

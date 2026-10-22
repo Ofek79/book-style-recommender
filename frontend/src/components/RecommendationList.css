@@ -13,3 +13,18 @@
 .recommendation-list > li + li {
   margin-block-start: 0;
 }
+
+/* Each card fills its grid cell, so two cards side by side end at the
+   same height. */
+.recommendation-list > li > * {
+  block-size: 100%;
+}
+
+/* Two columns once the page is wide enough: uses the width, and keeps
+   each card's rationale lines a comfortable reading length instead of
+   stretching across the whole page. */
+@media (min-width: 64rem) {
+  .recommendation-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
