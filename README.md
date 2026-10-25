@@ -277,5 +277,5 @@ docs/                       README assets (screenshot)
 docker-compose.yml          PostgreSQL, seeded from db/ on first start
 DECISIONS.md                architecture decision log
 EVALUATION.md               how far the LLM auto-tagging can be trusted
-HANDOFF.md                  project state written before the 3-week break (historical)
+HANDOFF.md                  current project state, open items, and gotchas
 ```

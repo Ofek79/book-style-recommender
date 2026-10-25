@@ -1,124 +1,172 @@
-# Handoff — end of day 3, before the 3-week break
+# Handoff — current project state
 
-Written 2026-09-12, updated 2026-09-14 (test suite + README polish, no new
-features). Read this first when picking the project back up. For how to run
-things, see `README.md`. For why each choice was made, see `DECISIONS.md`.
-For the working rules, see `CLAUDE.md`.
+Rewritten 2026-10-25. It replaces the version written 2026-09-12 / updated
+2026-09-14, before the 3-week break, when there was no frontend beyond
+`/health` and only 15 seed books. Read this first when picking the project
+back up. For how to run things, see `README.md`. For why each choice was
+made, see `DECISIONS.md`. For how far the LLM tagging can be trusted, see
+`EVALUATION.md`. For the working rules, see `CLAUDE.md`.
 
 ## What works right now
 
-The backend is functional end-to-end against a seeded database:
-
+**Backend (FastAPI):**
 - `GET /health`
-- `GET /books?search=&limit=&offset=` — title/author prefix search
-- `GET /books/{id}` — one book's metadata + style attributes if tagged
-- `GET /books/{id}/recommendations?genre=&limit=` — style-based
-  recommendations with a score, a plain-English rationale, and a bookstore
-  search link
+- `GET /books` - title/author prefix search, paged with `limit` (max 100) and `offset`
+- `GET /books/{id}` - metadata, style attributes (with `tagged_by`), and `rating`
+- `GET /books/{id}/recommendations` - style similarity with a 3-sentence
+  explanation in natural Hebrew, a bookstore link, and the book's rating.
+  Optional `genre` filter (`any` / `same` / `different`).
+- `POST /books`, `PUT /books/{id}/style-attributes`, `PUT /books/{id}/rating`
 
-All three real endpoints were manually tested against `/docs` and confirmed
-working, including the failure paths (`404` on an unknown id, `409` on an
-untagged one, `422` on an out-of-range `limit` or bad `genre` value).
+**Frontend (React, Hebrew, RTL, designed):**
+- Home screen with "how it works" and three example books that open in one
+  click
+- Search results as cards
+- A book view that replaces the results: one-row rating form with clickable
+  stars, genre filter (with a note that it recalculates), recommendation
+  cards in two columns on wide screens
+- Book-to-book navigation (a recommended book's title opens its own view).
+  Browser Back/Forward step through the books, then the results, then the
+  home screen, via the History API (no router). The site title returns home.
+- A tagging screen to add books and tag them by hand
+- One shared entrance animation for every view change. Loading, error and
+  empty states share one look (`StatusMessage`). Keyboard-accessible, with
+  `prefers-reduced-motion` respected.
 
-The database has 15 real, well-known books: 14 tagged with style attributes
-(picked to include close pairs, some across different genres, so similarity
-results are easy to sanity-check), plus `Brave New World` left deliberately
-untagged as a test case for the `404`/`409` paths.
+**LLM auto-tagging (terminal scripts, Gemini):** `tag_with_llm.py`,
+`add_books_bulk.py`, `compare_llm_tagging.py` - see README.
 
-`similarity.py` also has an automated test suite: 12 `pytest` tests covering
-the per-attribute distance rules, the exact rationale wording, and two
-end-to-end checks — including a regression test locked to the real
-Hemingway/McCarthy seed pair, so a future change to the formula can't
-silently break the demo without a test failing. Run with
+**Tests:** 20 `pytest` tests on `similarity.py`. Run with
 `cd backend && pip install -r requirements-dev.txt && pytest`.
 
-## What is NOT built yet
+## Data state
 
-- **Frontend still shows only `/health`.** `App.jsx` was explicitly kept out
-  of scope for day 3. It needs a search box, a results list, and a
-  recommendations view calling the three endpoints above.
-- **No admin tagging endpoint or UI.** `PUT /books/{id}/style-attributes` was
-  designed in the API contract but never implemented — tagging new books
-  today means writing SQL by hand.
-- **No real Open Library integration.** All book metadata is hand-seeded in
-  `db/seed.sql` with placeholder `open_library_id` values and no cover
-  images. Fetching real metadata is still a "later" item per `CLAUDE.md`.
-- **Only 15 books, not ~150.** The similarity weights are an intentional
-  equal-weight v1 baseline (see `DECISIONS.md`) — not yet tuned, because
-  tuning needs a bigger, real catalog and a real test set first.
-- **Bookstore link is a generic Google search**, not a specific store. Easy
-  to change — it's one function, `build_bookstore_search_url` in `main.py`.
-- **No automated tests for the FastAPI endpoints themselves** — only
-  `similarity.py` (pure Python, no DB) has a test suite. The three real
-  endpoints are verified manually through `/docs` only.
+- **136 books in the working database:** 36 tagged by hand
+  (`tagged_by = 'manual'`) and 100 tagged by Gemini (`tagged_by = 'llm'`).
+- **`is_present_tense` is `NULL` (unknown) for all 100 LLM-tagged books.** The
+  LLM was wrong 8/8 on hand-verified books, so it's no longer asked, and the
+  similarity function leaves unknown attributes out (see `EVALUATION.md`).
+- **Ratings** live in `book_ratings`, one row per rated book.
+- **A fresh install has only the 15 seed books.** `add_books_bulk.py` can add
+  the 100 curated ones (needs `GEMINI_API_KEY`; about 20 requests a day on the
+  free tier). The other 21 hand-tagged books exist only in the working
+  database.
+- A full backup of `book_style_attributes`, taken before the 2026-10-20
+  migration, was saved outside the repo. It isn't part of the project.
+
+## Open items
+
+Agreed and recorded, not yet done:
+
+1. **Tie-breaking in `build_rationale` follows `WEIGHTS` order, not how
+   distinctive an attribute is.** When several attributes tie at distance 0,
+   `sorted()` keeps their order in the `WEIGHTS` dict, so the first entries
+   (sentence length, description, dialogue) win. 49% of all rationales name
+   exactly those three. The explanation is correct, but may skip what's
+   actually special about a match - e.g. two books that both have humor, or
+   both use second person, which few books share. A fix would break ties by
+   rarity: prefer an attribute value that fewer books in the catalog share.
+   Needs a plan first. It changes which sentences show, so the rationale
+   tests change too. See the note at the end of the rationale entry in
+   `DECISIONS.md`.
+2. **Every terminal-script request to the API takes about 2 seconds.**
+   `backend/api_client.py` uses `API_BASE_URL = "http://localhost:8000"`. On
+   this Windows machine, `localhost` adds about 2.2s per request
+   (`127.0.0.1` answers instantly - measured 2026-10-22), most likely because
+   it tries IPv6 first. `compare_llm_tagging.py` makes one request per book,
+   so fetching the catalog alone takes about 5 minutes. A likely fix is
+   switching `API_BASE_URL` to `127.0.0.1`. One line, but check that nothing
+   else depends on the name `localhost` (CORS checks the frontend's origin,
+   not this). The frontend's `VITE_API_URL` also uses `localhost`. Browsers
+   seemed fast, but this wasn't measured there.
+
+Other known gaps:
+
+- **`is_nonlinear` has a one-way bias in LLM tags.** 10 of 12 disagreements
+  in Run 3 are manual = false, LLM = true. It's the next candidate for the
+  same kind of check `is_present_tense` got (`EVALUATION.md`).
+- **No real Open Library integration** - placeholder ids, no covers.
+- **Similarity weights are still the equal-weight baseline.** Revisit once
+  there are about 20 ratings and a test set (`DECISIONS.md`).
+- **No automated tests for the API endpoints.**
+- **A book view has no URL** - reload returns home, and no book can be linked
+  to. A `?book=<id>` URL would fix it (`DECISIONS.md`).
+- **Phone testing on a real device** needs `--host` on both servers, the PC's
+  IP in `frontend/.env`, and that origin added to CORS in `main.py`. Not set
+  up. Use the browser's device mode (F12, then Ctrl+Shift+M) meanwhile.
+- **Small leftovers:**
+  - the FastAPI title in `main.py` (shown on `/docs`) still says "Book Style
+    Recommender API"
+  - the `GEMINI_API_KEY` comment in `.env.example` mentions two scripts; there
+    are three
+  - the git `user.email` is a placeholder (`הכתובת-שהעתקת`) on every commit
 
 ## Gotchas
 
-Things that actually tripped things up while building this, with the
-symptom and the fix, so the same debugging doesn't happen twice.
+Things that actually tripped things up, with the symptom and the fix, so the
+same debugging doesn't happen twice.
 
 1. **Editing `schema.sql`/`seed.sql` seems to do nothing.**
    Symptom: table/data changes never show up after `docker compose up -d`.
    Cause: Postgres only runs `/docker-entrypoint-initdb.d/*.sql` on a
-   **first-ever** container start (empty data volume) - if the volume from a
-   previous session is still around, the scripts are skipped entirely.
-   Fix: `docker compose down -v` (wipes data) then `docker compose up -d`.
+   **first-ever** container start (empty data volume).
+   Fix: `docker compose down -v` (wipes data) then `docker compose up -d`. For
+   the live database, apply an `ALTER TABLE` migration by hand instead, after
+   a backup (see the 2026-10-20 entries in `DECISIONS.md`).
 
 2. **`ModuleNotFoundError: No module named 'psycopg'`.**
-   Symptom: the error above when running the server or a script.
-   Cause: the virtual environment was never activated, so `python`/`pip`
-   point at a different (global) Python.
-   Fix: `.venv\Scripts\Activate.ps1`. The prompt must show `(.venv)` at the
-   start of the line before running anything else.
+   Cause: the virtual environment isn't active.
+   Fix: `.venv\Scripts\Activate.ps1` - the prompt must show `(.venv)`.
 
 3. **`pip install` reports success, but the package still isn't found.**
-   Symptom: install finishes clean, then the very next import fails anyway.
-   Cause: it installed into the wrong (usually global) environment - same
-   root cause as #2, different symptom.
-   Fix: don't trust the install output alone. Verify from the *same*
-   terminal: `pip list` (look for the package) or
-   `python -c "import psycopg"` (no error = it's really there).
+   Cause: it went into the wrong (global) environment - same root cause as #2.
+   Fix: check from the same terminal with `pip list` or
+   `python -c "import psycopg"`.
 
 4. **`Could not import module "main"` from `uvicorn`.**
-   Symptom: `uvicorn` fails immediately on startup with that error.
-   Cause: it was run from the repo root instead of from `backend/`, so
-   `main.py` isn't on the current path.
-   Fix: `cd backend` first. More generally - check the end of the terminal
-   prompt line (the current directory) before running any command, not
-   after it fails.
+   Cause: run from the repo root instead of `backend/`.
+   Fix: `cd backend` first.
 
-5. **`curl` in PowerShell prints a security warning / behaves oddly.**
-   Symptom: unexpected output or a warning instead of the plain JSON
-   response shown in this README.
-   Cause: PowerShell aliases `curl` to `Invoke-WebRequest`, a different tool
-   with different output, not the real curl.
-   Fix: call `curl.exe` explicitly to get the actual curl binary.
+5. **`curl` in PowerShell behaves oddly.**
+   Cause: PowerShell aliases `curl` to `Invoke-WebRequest`.
+   Fix: call `curl.exe`.
 
-6. **Frontend still shows the old `VITE_API_URL` after editing `frontend/.env`.**
-   Symptom: changed `frontend/.env`, refreshed the browser, nothing changed.
-   Cause: there are two separate `.env` files (see `DECISIONS.md`) - Vite
-   only reads `frontend/.env`, and only loads it once, at dev-server start.
-   Fix: restart `npm run dev` after editing `frontend/.env`. A browser
-   refresh alone is not enough.
+6. **Frontend still uses the old `VITE_API_URL` after editing `frontend/.env`.**
+   Cause: Vite reads `frontend/.env` only at dev-server start.
+   Fix: restart `npm run dev`.
 
-7. **Pasting a long command into PowerShell throws confusing errors.**
-   Symptom: a multi-line paste (e.g. a long `docker` or `curl` command)
-   splits across two lines and PowerShell reports an unrelated-looking
-   parse error.
-   Cause: the terminal mis-handles the paste, not the command itself.
-   Fix: if a pasted command errors strangely, retype it manually on one
-   line before assuming the command is wrong.
+7. **A pasted multi-line command throws confusing errors.**
+   Fix: retype it on one line before assuming the command is wrong.
+
+8. **`git commit -m "..."` fails in Windows PowerShell 5.1 when the message
+   contains quote characters** - it splits the argument at each `"`.
+   Fix: keep quotes out of `-m` messages, or write the message to a file and
+   use `git commit -F <file>`.
+
+9. **A browser test shows behavior from before a code change.**
+   Cause: the page wasn't reloaded with the new code. This produced a false
+   bug report once (keyboard access to recommendation titles, 2026-10-25).
+   Fix: hard-reload with Ctrl+Shift+R before testing a change.
+
+10. **Back/Forward behave strangely while testing navigation.**
+    Cause: history entries left over from earlier test runs in the same tab
+    (each opened book adds one).
+    Fix: test navigation in a fresh tab.
+
+11. **The terminal scripts are slow.** See open item 2 - `localhost` costs
+    about 2s per request on this machine.
+
+12. **Gemini returns `429` / stops partway through a run.**
+    Cause: the free tier's daily quota (about 20 requests).
+    Fix: re-run the next day. `add_books_bulk.py` and
+    `compare_llm_tagging.py` both resume without redoing finished work.
 
 ## Suggested order for the next session
 
-1. `App.jsx` — wire up search → book detail → recommendations, using the
-   three endpoints (this was the one file cut from day 3's scope).
-2. `PUT /books/{id}/style-attributes` + a minimal admin tagging UI, so more
-   books can be added without hand-written SQL.
-3. Start pulling real metadata from Open Library instead of hand-seeding.
-4. Once the catalog is close to ~150 tagged books: build a small test set of
-   "book A should recommend book B" pairs, and use it to revisit the equal
-   weights in `similarity.py`.
-5. Optional, lower priority: automated tests for the FastAPI endpoints
-   (currently manual-only via `/docs`), once there's a real DB fixture
-   strategy to decide on.
+1. Open item 2 (`localhost` → `127.0.0.1` in `api_client.py`): small, and it
+   speeds up every later script run.
+2. Open item 1 (rarity-based tie-breaking in `build_rationale`) - plan first.
+3. Check `is_nonlinear` the way `is_present_tense` was checked.
+4. Collect about 20 ratings, then revisit the equal weights in `similarity.py`.
+5. Optional: automated tests for the API endpoints, a `?book=<id>` URL, real
+   Open Library metadata.
