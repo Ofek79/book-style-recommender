@@ -86,6 +86,7 @@ file next to each component that needs one (`SearchForm.css`,
 `HowItWorks.css`, `RecommendationList.css`, `RecommendationCard.css`,
 `StatusMessage.css`, `BookView.css`, `RatingForm.css`, `StarRatingInput.css`,
 `GenreFilter.css`, `BookCard.css`, `BookResults.css`, `TaggingScreen.css`).
+`docs/` folder for README assets (`docs/screenshot.png`, added by hand).
 
 **Environment files:** two separate `.env` files — root (`POSTGRES_*`,
 `DATABASE_URL`, for docker-compose + backend) and `frontend/.env`
