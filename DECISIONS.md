@@ -691,7 +691,8 @@ The genre filter stays as set when moving between books.
 - **Secrets:** the database password lives in **Secret Manager** and reaches Cloud Run as an environment variable - never in code, the image, or a command line. `GEMINI_API_KEY` is not deployed at all: the API server never calls Gemini, and the tagging scripts keep running locally.
 - **Frontend:** the Vite production build on **Firebase Hosting** (free tier, HTTPS, a `<project>.web.app` address). `VITE_API_URL` is set in a new `frontend/.env.production` and baked in at build time, so changing it means rebuilding.
 - **CORS:** the allowed origins move from a hardcoded list in `main.py` to an environment variable, defaulting to `http://localhost:5173` for local use. In production it holds the Firebase Hosting address.
-- **Still open, decided in session 2:** the region (`me-west1` Tel Aviv or `europe-west1`, after checking Cloud SQL availability and price), and whether to stop the Cloud SQL instance between demos to save cost (estimated at roughly $7-10/month, not yet verified).
+- **Region: `me-west1` (Tel Aviv)**, for all services. Decided before session 2, after the user checked that Cloud SQL, including the `db-f1-micro` machine type, is available there. Closest to the user and to the expected (Israeli) audience.
+- **Still open:** whether to stop the Cloud SQL instance between demos to save cost (estimated at roughly $7-10/month, not yet verified). To be decided once the real cost shows up in billing.
 
 **Exception to rule 5, approved by the user:** Firebase Hosting needs the `firebase-tools` CLI, a Node tool. Rule 5 limits Node tooling to what's needed to run React. The user approved this one tool for deploying the frontend. It's installed on the machine, not added to the project's `package.json`.
 
