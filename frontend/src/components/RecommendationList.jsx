@@ -18,7 +18,9 @@ import StatusMessage from "./StatusMessage";
 //   top, until the new ones arrive and animate in one after another (see
 //   the CSS). No instant swap, and the page doesn't collapse to a message
 //   and jump back, so it's clear the list is being refreshed.
-export default function RecommendationList({ status, recommendations }) {
+// onSelectBook is passed through to each card, whose title opens that
+// book.
+export default function RecommendationList({ status, recommendations, onSelectBook }) {
   const hasCards = recommendations !== null && recommendations.length > 0;
   const isReloading = status === "loading" && hasCards;
 
@@ -64,7 +66,7 @@ export default function RecommendationList({ status, recommendations }) {
       >
         {recommendations.map((recommendation) => (
           <li key={recommendation.book.id}>
-            <RecommendationCard recommendation={recommendation} />
+            <RecommendationCard recommendation={recommendation} onSelectBook={onSelectBook} />
           </li>
         ))}
       </ul>

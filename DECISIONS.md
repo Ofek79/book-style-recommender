@@ -644,6 +644,33 @@ The view switches immediately on click, with a loading message until the book's 
 
 **Known limit, accepted:** the URL doesn't change, so reloading while in a book view returns to the start screen, and a specific book can't be linked to. A `?book=<id>` URL read on page load would fix both, but nobody asked for it yet.
 
+**Extended 2026-10-25 - book-to-book navigation:** A recommended book's title is a button that opens that book's own view, through the same `openBook` as a search result. Every opened book gets its own history entry, so Back steps back one book at a time (B → A → results), and the on-page button is now just "→ חזרה", since the previous step may be a book, not the results. Three adjustments came with it:
+- **Scroll:** the results' scroll position is saved only when a book is opened from the results. Otherwise opening B from A would overwrite it, and the final step back would land in the wrong place. Back to a previous book opens it at the top. Restoring the exact spot in A's recommendations would mean waiting for them to reload before scrolling - more code for a small gain.
+- **Depth in history state:** each entry stores `{ bookId, depth }`, where depth is how many books deep it is. A new search from inside a book jumps straight to the results entry with `history.go(-depth)`. A single `history.back()` would land on the previous book after book-to-book browsing.
+- **Only the title is clickable, not the whole card.** The card also holds the bookstore link, and a link nested inside a button is invalid HTML that breaks keyboard and screen-reader use.
+
+The genre filter stays as set when moving between books.
+
+**Extended 2026-10-25 - "home" is the base history entry:** The first history entry is always the main screen's base view - the home screen ("how it works", example books) before any search, the results after one - and Back from it leaves the site. Two changes keep it that way:
+- **Example books open directly, without a visible search.** Before, clicking one ran a normal search (filling the search box and storing a one-book result list), then opened the book. One click made two moves (home → results → book) but recorded only one history entry (the book). So Back landed on a search the user never made, and one more Back left the site. Now the click still looks up the book's id through the same title search, but doesn't store the results or fill the search box, so Back from the book returns to the clean home screen. If the lookup fails or finds no exact match, it falls back to a visible search.
+- **The site title ("Book-A-Like") is a button back home.** It jumps back to the base entry with `history.go(-depth)` (as a new search does - the books stay reachable with Forward), clears the search, and scrolls to the top. From the tagging tab it switches to the main screen, which opens on home anyway. App sends the request as a counter (`homeRequest`), not a boolean, so every click counts as a new request.
+- Searches now use the same latest-request counter as recommendations, so a search still in flight can't refill the home screen after the title was clicked.
+
+---
+
+## 2026-10-25 — Screen transitions: one CSS entrance animation, re-run with a React key
+
+**Decision:** Every change of view uses the same entrance: the new view fades in and rises 8px over 0.3s (`.view-transition` in `base.css`). That covers home, results, opening a book, moving to another book, going back, going home, switching tabs, and a book's content replacing its loading message. A CSS animation runs when an element is first rendered, so each view wrapper gets a React `key` that names the view (`book-<id>`, `"home"`, `"results"`, or the tab name). When the key changes, React builds a new element and the animation runs again. The search box sits outside the animated wrapper, so it stays still while the view under it changes. Under `prefers-reduced-motion`, the existing rule in `base.css` cuts it to an instant change.
+
+**What prompted this:** Views swapped instantly, which felt abrupt. Going home from the site title had no motion at all - the page just jumped.
+
+**Rejected alternatives:**
+- **An animation library (e.g. Framer Motion).** A new library (rule 6). It could also animate the old view out, but an entrance alone already removes the jump.
+- **The browser's View Transitions API (`document.startViewTransition`).** No library, and it can cross-fade old and new. But it has to wrap each state change in a callback, which adds a new concept to every place that changes the view. Newer browser support also varies.
+- **Animating `opacity` with a CSS transition on a class toggle.** Needs extra state for "leaving" and "entering" and timing between them. A key plus an entrance animation needs neither.
+
+**Cost accepted:** a view is rebuilt when its key changes, so anything held only in that view's components resets. The screens' real state lives in `MainScreen` and `App`, above the keyed wrappers, so nothing is lost - search results, the open book and the genre filter all survive.
+
 ---
 
 ## 2026-10-22 — Star rating input: hidden radio buttons styled as stars; score shown as a percentage

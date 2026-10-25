@@ -15,7 +15,9 @@ import StatusMessage from "./StatusMessage";
 // - recommendations and recommendationsStatus, passed on to RecommendationList
 // - genreFilter and onGenreChange, passed on to GenreFilter
 // - onRatingSaved, passed on to RatingForm
-// - onBack, called by the "back to results" button
+// - onSelectBook, passed on to RecommendationList: opens a recommended book
+// - onBack, called by the back button - one step back in history, which
+//   is the previous book or the results
 // Renders the title row with the back button, then a loading or error
 // message, or the book itself: its rating form and its recommendations.
 // The saved rating isn't repeated as a separate line - the form already
@@ -28,6 +30,7 @@ export default function BookView({
   genreFilter,
   onGenreChange,
   onRatingSaved,
+  onSelectBook,
   onBack,
 }) {
   // Once the book's details arrive, move keyboard focus to its title.
@@ -41,18 +44,23 @@ export default function BookView({
     }
   }, [bookId]);
 
-  // → points right: "back" in a right-to-left page.
+  // → points right: "back" in a right-to-left page. Just "back", not
+  // "back to results": since books can be opened from other books'
+  // recommendations, the previous step may be another book.
   const backButton = (
     <button type="button" className="book-view__back" onClick={onBack}>
-      → חזרה לתוצאות
+      → חזרה
     </button>
   );
 
   // While loading or on error there's no title yet, so the back button
-  // stands alone above the message.
+  // stands alone above the message. The two returns have different keys,
+  // so when the book arrives React builds the content section fresh and
+  // it fades in (.view-transition in base.css) instead of replacing the
+  // loading message in a single jump.
   if (book === null) {
     return (
-      <section className="book-view">
+      <section key="loading" className="book-view">
         {backButton}
         {bookStatus === "loading" && (
           <StatusMessage variant="loading">טוענים את פרטי הספר</StatusMessage>
@@ -65,7 +73,7 @@ export default function BookView({
   }
 
   return (
-    <section className="book-view">
+    <section key="loaded" className="book-view view-transition">
       <div className="book-view__header">
         <div className="book-view__heading">
           {/* tabIndex -1: focusable from code (see above), but not added
@@ -105,7 +113,11 @@ export default function BookView({
           </p>
         </div>
       </div>
-      <RecommendationList status={recommendationsStatus} recommendations={recommendations} />
+      <RecommendationList
+        status={recommendationsStatus}
+        recommendations={recommendations}
+        onSelectBook={onSelectBook}
+      />
     </section>
   );
 }

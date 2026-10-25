@@ -4,13 +4,17 @@ import "./RecommendationCard.css";
 import Stars from "./Stars";
 
 // Takes one recommendation from GET /books/{id}/recommendations (book,
-// similarity_score, rationale, bookstore_search_url). Renders the title,
-// author and bookstore link together at the top, then the match score as
-// a percentage and the reader's rating if there is one, then the
-// rationale sentences. The score arrives as 0-1; it's shown as a rounded
-// percentage only here - sorting already happened on the server, on the
-// full-precision score (see DECISIONS.md).
-export default function RecommendationCard({ recommendation }) {
+// similarity_score, rationale, bookstore_search_url) and a callback that
+// opens a book. Renders the title, author and bookstore link together at
+// the top, then the match score as a percentage and the reader's rating
+// if there is one, then the rationale sentences. The title is a button
+// that opens this book's own recommendations - book-to-book navigation.
+// Only the title, not the whole card: the card also holds the bookstore
+// link, and a link inside a button is invalid HTML that breaks keyboard
+// and screen-reader use. The score arrives as 0-1; it's shown as a
+// rounded percentage only here - sorting already happened on the server,
+// on the full-precision score (see DECISIONS.md).
+export default function RecommendationCard({ recommendation, onSelectBook }) {
   const { book, similarity_score, rationale, bookstore_search_url } = recommendation;
   const matchPercent = Math.round(similarity_score * 100);
 
@@ -19,7 +23,13 @@ export default function RecommendationCard({ recommendation }) {
       <header className="recommendation-card__header">
         <div>
           <h3 className="recommendation-card__title">
-            <bdi>{book.title}</bdi>
+            <button
+              type="button"
+              className="recommendation-card__open"
+              onClick={() => onSelectBook(book.id)}
+            >
+              <bdi>{book.title}</bdi>
+            </button>
           </h3>
           <p className="recommendation-card__author">
             <bdi>{book.author}</bdi>

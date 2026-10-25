@@ -25,15 +25,28 @@ export default function App() {
   // Which screen is showing. Toggled by the tab buttons below - no
   // router, no URL change (see DECISIONS.md).
   const [view, setView] = useState("main"); // main | tagging
+  // Goes up by one each time the site title is clicked; MainScreen
+  // treats each new value as "go back to the home screen".
+  const [homeRequest, setHomeRequest] = useState(0);
+
+  // Takes nothing. The site title's click handler: shows the main screen
+  // and asks it to return to its home screen.
+  function handleHomeClick() {
+    setView("main");
+    setHomeRequest((previous) => previous + 1);
+  }
 
   return (
     <>
       <header className="app-header">
         <div className="app-header__inner">
           {/* The site name is English inside a Hebrew page. lang="en" makes
-              screen readers pronounce it as English. */}
+              screen readers pronounce it as English. It's also a button
+              back to the home screen, as on most sites. */}
           <h1 className="app-header__title" lang="en">
-            Book-A-Like
+            <button type="button" className="app-header__home" onClick={handleHomeClick}>
+              Book-A-Like
+            </button>
           </h1>
           <p className="app-header__tagline">ספרים דומים בכתיבה, לא רק בנושא</p>
           <nav className="app-nav" aria-label="מסכים">
@@ -56,7 +69,12 @@ export default function App() {
         </div>
       </header>
       <main className="app-main">
-        {view === "main" ? <MainScreen /> : <TaggingScreen />}
+        {/* key={view}: switching tabs builds the screen fresh, so it gets
+            the same entrance animation as every other view change
+            (.view-transition in base.css). */}
+        <div key={view} className="view-transition">
+          {view === "main" ? <MainScreen homeRequest={homeRequest} /> : <TaggingScreen />}
+        </div>
       </main>
     </>
   );
