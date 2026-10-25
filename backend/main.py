@@ -4,6 +4,7 @@ tagging, and rating endpoints, plus /health from day 1.
 Run: uvicorn main:app --reload
 """
 
+import os
 from typing import Literal
 from urllib.parse import quote_plus
 from uuid import uuid4
@@ -19,13 +20,47 @@ from similarity import similarity as compute_similarity
 # The application object that every endpoint is registered on and uvicorn runs.
 app = FastAPI(title="Book Style Recommender API")
 
+# Which frontend origins may call this API from the browser. Read from the
+# CORS_ALLOWED_ORIGINS environment variable - a comma-separated list - so
+# the deployed server can allow the Firebase Hosting address without a
+# code change (see DECISIONS.md). Unset, it falls back to the local Vite
+# dev server, so local work needs no configuration. (The root .env is
+# already loaded into the environment by db.py, imported above.)
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
+# True only on the public deployment, where READ_ONLY=true is set (see
+# DECISIONS.md and .env.example). Exactly the string "true" turns it on;
+# unset or anything else leaves writes working, as they should locally.
+READ_ONLY = os.environ.get("READ_ONLY") == "true"
+
+
+# Takes nothing. Returns nothing if writes are allowed; raises a 403 if
+# the server is in read-only mode. Exists so each write endpoint can
+# refuse with one line at its top, before touching the database - the
+# backend is the real guard, since hiding buttons in the frontend stops
+# no one from sending a request directly.
+def require_writes_allowed():
+    if READ_ONLY:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "read_only",
+                "message": "This deployment is read-only. Books, tags and ratings can't be changed here.",
+            },
+        )
+
+
 # Let the browser call the API from a different origin (frontend on 5173, server on 8000).
 # Without this the browser blocks the request from React due to the same-origin policy.
 # POST and PUT were added here once the tagging UI introduced write
 # endpoints (see DECISIONS.md) - before that, only GET was needed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
@@ -243,8 +278,10 @@ def get_recommendations(
 # metadata source yet. 409 if a book with the same title and author
 # (ignoring case and surrounding whitespace) already exists - see the
 # unique index in db/schema.sql, which is what actually catches this.
+# 403 in read-only mode (see require_writes_allowed).
 @app.post("/books", status_code=201)
 def create_book(book: BookIn):
+    require_writes_allowed()
     placeholder_open_library_id = f"manual-{uuid4().hex}"
     with get_connection() as conn, conn.cursor() as cur:
         try:
@@ -286,8 +323,10 @@ def create_book(book: BookIn):
 # also handled by this same endpoint). tagged_by is replaced too, so it
 # always records who saved the row last. Returns the saved row. 404 if
 # the book itself doesn't exist - tagging only makes sense for a real book.
+# 403 in read-only mode (see require_writes_allowed).
 @app.put("/books/{book_id}/style-attributes")
 def set_style_attributes(book_id: int, attributes: StyleAttributesPut):
+    require_writes_allowed()
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT id FROM books WHERE id = %(book_id)s", {"book_id": book_id})
         if cur.fetchone() is None:
@@ -332,10 +371,12 @@ def set_style_attributes(book_id: int, attributes: StyleAttributesPut):
 # None). Saves it - creating the book_ratings row if the book has never
 # been rated, or replacing it if it has, same save-or-replace meaning as
 # the style-attributes PUT above. rated_at is reset on every save.
-# Returns the saved row. 404 if the book doesn't exist. Any book can be
-# rated, tagged or not (see DECISIONS.md).
+# Returns the saved row. 404 if the book doesn't exist, 403 in read-only
+# mode (see require_writes_allowed). Any book can be rated, tagged or not
+# (see DECISIONS.md).
 @app.put("/books/{book_id}/rating")
 def set_rating(book_id: int, rating: RatingIn):
+    require_writes_allowed()
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT id FROM books WHERE id = %(book_id)s", {"book_id": book_id})
         if cur.fetchone() is None:

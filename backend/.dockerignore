@@ -1,0 +1,20 @@
+# Files kept out of the Docker image (the "COPY . ." in Dockerfile).
+# Smaller image, faster builds, and no local secrets or caches inside it.
+
+# The local virtual environment - the image installs its own packages
+# from requirements.txt.
+.venv/
+
+# Python and test caches.
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets never go into an image. (The real .env is at the repo root,
+# outside this build context, but this guards against a copy here.)
+.env
+*.env
+
+# Local output of the LLM comparison script.
+llm_comparison_results.json
+comparison*.txt

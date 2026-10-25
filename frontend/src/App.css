@@ -25,6 +25,12 @@
   padding-block-start: var(--space-4);
 }
 
+/* Without the tab row (read-only build), the band needs its own bottom
+   padding - the tabs normally fill that space. */
+.app-header__inner--no-tabs {
+  padding-block-end: var(--space-4);
+}
+
 .app-header__title {
   margin-block-end: var(--space-1);
   line-height: 1.1;

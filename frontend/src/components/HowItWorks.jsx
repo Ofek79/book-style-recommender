@@ -2,6 +2,7 @@
 // search so a first-time visitor sees what the site does and can try it
 // in one click.
 
+import { READ_ONLY } from "../api";
 import "./HowItWorks.css";
 
 // Example books to try, picked to differ in style, not just genre:
@@ -39,9 +40,13 @@ export default function HowItWorks({ onTryExample }) {
           </span>
         </li>
       </ol>
-      <p className="how-it-works__ratings">
-        אפשר לדרג כל ספר ולהוסיף הערה. הדירוג מופיע ליד הספר בהמלצות.
-      </p>
+      {/* Rating isn't possible in the public read-only build, so the
+          sentence that offers it is left out there. */}
+      {!READ_ONLY && (
+        <p className="how-it-works__ratings">
+          אפשר לדרג כל ספר ולהוסיף הערה. הדירוג מופיע ליד הספר בהמלצות.
+        </p>
+      )}
       <div className="how-it-works__examples">
         <span className="how-it-works__examples-label">נסו למשל:</span>
         {EXAMPLE_TITLES.map((title) => (

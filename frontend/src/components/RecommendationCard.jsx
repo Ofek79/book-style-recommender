@@ -1,7 +1,13 @@
 // One recommendation card in the recommendations list.
 
+import { READ_ONLY } from "../api";
 import "./RecommendationCard.css";
 import Stars from "./Stars";
+
+// How a rating is announced to screen readers. "Your rating" locally; on
+// the public read-only site the ratings are the owner's, not the
+// visitor's, so it's just "rating" there.
+const RATING_LABEL = READ_ONLY ? "דירוג" : "הדירוג שלך";
 
 // Takes one recommendation from GET /books/{id}/recommendations (book,
 // similarity_score, rationale, bookstore_search_url) and a callback that
@@ -52,7 +58,7 @@ export default function RecommendationCard({ recommendation, onSelectBook }) {
             <span
               className="recommendation-card__stars"
               role="img"
-              aria-label={`הדירוג שלך: ${book.rating.rating} מתוך 5`}
+              aria-label={`${RATING_LABEL}: ${book.rating.rating} מתוך 5`}
             >
               <Stars rating={book.rating.rating} />
             </span>

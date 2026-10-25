@@ -9,6 +9,12 @@ export const API_URL = import.meta.env.VITE_API_URL;
 // limit on GET /books.
 export const PAGE_SIZE = 100;
 
+// True in the public read-only build (VITE_READ_ONLY=true in
+// .env.production - see DECISIONS.md). Only hides controls that would
+// fail anyway: the backend's own READ_ONLY setting is what actually
+// refuses writes. Read in this one place so every component agrees.
+export const READ_ONLY = import.meta.env.VITE_READ_ONLY === "true";
+
 // Takes an API path (e.g. "/books") and an optional object of extra
 // query parameters (e.g. { search: "har" }). Requests the path page by
 // page, offset by PAGE_SIZE, until a page comes back short, and returns

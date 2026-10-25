@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 
+import { READ_ONLY } from "./api";
 import "./App.css";
 import MainScreen from "./components/MainScreen";
 import TaggingScreen from "./components/TaggingScreen";
@@ -20,6 +21,11 @@ const SCREENS = [
   { id: "main", label: "חיפוש והמלצות" },
   { id: "tagging", label: "תיוג ספרים" },
 ];
+
+// In the public read-only build there's no tagging screen (see
+// DECISIONS.md), which leaves a single screen - and a single tab is no
+// choice at all, so the tab row isn't shown then.
+const SHOW_TABS = !READ_ONLY;
 
 export default function App() {
   // Which screen is showing. Toggled by the tab buttons below - no
@@ -39,7 +45,11 @@ export default function App() {
   return (
     <>
       <header className="app-header">
-        <div className="app-header__inner">
+        <div
+          className={
+            SHOW_TABS ? "app-header__inner" : "app-header__inner app-header__inner--no-tabs"
+          }
+        >
           {/* The site name is English inside a Hebrew page. lang="en" makes
               screen readers pronounce it as English. It's also a button
               back to the home screen, as on most sites. */}
@@ -49,23 +59,25 @@ export default function App() {
             </button>
           </h1>
           <p className="app-header__tagline">ספרים דומים בכתיבה, לא רק בנושא</p>
-          <nav className="app-nav" aria-label="מסכים">
-            {SCREENS.map((screen) => (
-              <button
-                key={screen.id}
-                type="button"
-                className={
-                  view === screen.id ? "app-nav__tab app-nav__tab--active" : "app-nav__tab"
-                }
-                // Tells screen readers which tab is the current screen -
-                // the visual "active" style alone isn't announced.
-                aria-current={view === screen.id ? "page" : undefined}
-                onClick={() => setView(screen.id)}
-              >
-                {screen.label}
-              </button>
-            ))}
-          </nav>
+          {SHOW_TABS && (
+            <nav className="app-nav" aria-label="מסכים">
+              {SCREENS.map((screen) => (
+                <button
+                  key={screen.id}
+                  type="button"
+                  className={
+                    view === screen.id ? "app-nav__tab app-nav__tab--active" : "app-nav__tab"
+                  }
+                  // Tells screen readers which tab is the current screen -
+                  // the visual "active" style alone isn't announced.
+                  aria-current={view === screen.id ? "page" : undefined}
+                  onClick={() => setView(screen.id)}
+                >
+                  {screen.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
       </header>
       <main className="app-main">

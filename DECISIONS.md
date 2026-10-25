@@ -680,3 +680,62 @@ The genre filter stays as set when moving between books.
 **Rejected alternative (stars):** `<span>` stars with `onClick`. Arrow-key navigation, Tab order, and screen-reader wording ("3 of 5") would all have to be rebuilt by hand with ARIA attributes. Radio inputs already provide all of it. Only the look changes.
 
 **Reasoning (percentage):** "93% התאמה" reads at a glance. "0.925" needs knowing the scale. Sorting still happens on the full-precision score on the server (2026-09-12), so this changes nothing but the label.
+
+---
+
+## 2026-10-25 — Deployment: GCP with Cloud Run, Cloud SQL, Secret Manager and Firebase Hosting
+
+**Decision:** The project is deployed to Google Cloud in two sessions: first local preparation (code and a tested container), then the cloud setup.
+- **Backend:** FastAPI in a container on **Cloud Run**, built from a `Dockerfile` in `backend/` with `gcloud run deploy --source` (Cloud Build + Artifact Registry). `uvicorn` listens on the `$PORT` Cloud Run provides.
+- **Database:** **Cloud SQL for PostgreSQL 16** - the same major version as local (`postgres:16`, 16.15). Cloud Run connects through the Cloud SQL connector's Unix socket, so `db.py` doesn't change, only the value of `DATABASE_URL` (`postgresql://user:pass@/dbname?host=/cloudsql/<connection-name>`).
+- **Secrets:** the database password lives in **Secret Manager** and reaches Cloud Run as an environment variable - never in code, the image, or a command line. `GEMINI_API_KEY` is not deployed at all: the API server never calls Gemini, and the tagging scripts keep running locally.
+- **Frontend:** the Vite production build on **Firebase Hosting** (free tier, HTTPS, a `<project>.web.app` address). `VITE_API_URL` is set in a new `frontend/.env.production` and baked in at build time, so changing it means rebuilding.
+- **CORS:** the allowed origins move from a hardcoded list in `main.py` to an environment variable, defaulting to `http://localhost:5173` for local use. In production it holds the Firebase Hosting address.
+- **Still open, decided in session 2:** the region (`me-west1` Tel Aviv or `europe-west1`, after checking Cloud SQL availability and price), and whether to stop the Cloud SQL instance between demos to save cost (estimated at roughly $7-10/month, not yet verified).
+
+**Exception to rule 5, approved by the user:** Firebase Hosting needs the `firebase-tools` CLI, a Node tool. Rule 5 limits Node tooling to what's needed to run React. The user approved this one tool for deploying the frontend. It's installed on the machine, not added to the project's `package.json`.
+
+**Rejected alternatives:**
+- **A Compute Engine VM running docker-compose.** The closest to local, but the VM, its OS updates, HTTPS and Postgres backups would all be manual work.
+- **Postgres on a free-tier e2-micro VM** instead of Cloud SQL. Saves the monthly cost, but backups, upgrades and recovery become manual work - too much for a first deployment.
+- **A non-GCP database (Neon, Supabase).** Free tiers exist, but the goal is a deployment on one cloud, and it would add a second provider's account and network path.
+- **Serving the frontend from FastAPI (`StaticFiles`).** One service and no CORS, but it ties the two deployments together. Two separately deployed parts is what the separate `.env` files and CORS decisions were designed around (2026-09-06).
+- **Cloud Storage as a static site.** Needs only `gcloud`, but gives a long `storage.googleapis.com/<bucket>/index.html` address and needs a relative Vite `base`.
+- **A second Cloud Run service with nginx** for the frontend. Another Dockerfile and service to maintain for static files.
+
+**Reasoning:** Managed services for everything that needs care - the database above all. The local architecture carries over almost unchanged: one container for the API, one Postgres, static files for the frontend.
+
+---
+
+## 2026-10-25 — Public deployment is read-only; writes stay local
+
+**Decision:** The deployed site is read-only. A `READ_ONLY` environment variable on the backend makes every write endpoint (`POST /books`, `PUT /books/{id}/style-attributes`, `PUT /books/{id}/rating`) return `403` without touching the database. The production frontend hides the tagging tab and the rating form. Locally, `READ_ONLY` is unset, and everything works as before.
+
+**The backend is the real guard; the frontend only tidies the UI.** Hiding buttons protects nothing - anyone can send a `PUT` with `curl`. The frontend's flag only avoids showing controls that would fail anyway. If the two ever disagree, the backend still refuses.
+
+**What prompted this:** There are no users or login (out of scope - see the ratings entry). On a public URL, anyone could add books, change tags, or rewrite ratings. And under the data decision below, anything written in the cloud would be lost at the next data refresh anyway.
+
+**Rejected alternatives:**
+- **A shared secret in a header for writes.** The secret would have to live in the frontend bundle to be usable from the site, where anyone can read it. Not real protection, just a more complicated open door.
+- **Real authentication.** The right long-term answer, but users and login were explicitly put out of scope.
+- **Leaving writes open.** The data could be changed by anyone, and changes would be silently wiped at the next refresh.
+
+---
+
+## 2026-10-25 — Local database is the source of truth; the cloud is a refreshed copy
+
+**Decision:** Tagging and rating keep happening locally. The Cloud SQL database is a copy, filled and later refreshed by a full dump and restore:
+- `pg_dump --no-owner --no-acl`, run inside the local database container, to a file outside the repo (it holds all the data)
+- restored into Cloud SQL with `psql` through the Cloud SQL Auth Proxy
+- `--no-owner --no-acl` because the local user `book_user` doesn't exist in Cloud SQL, and the dump shouldn't try to hand objects to it
+- `db/schema.sql` and `db/seed.sql` are **not** run in the cloud. The dump creates the tables itself, and the seed rows would collide with the real ones.
+- Checked after every restore: row counts in all three tables, `tagged_by` split (36 manual / 100 LLM at the time of writing), and one Hebrew title.
+
+A refresh **replaces** the cloud data. That's safe only because nothing is ever written there - which is what the read-only decision above guarantees.
+
+**Rejected alternatives:**
+- **Working directly against the cloud database** through the Auth Proxy (the local tagging screen and scripts writing to Cloud SQL). One source of truth, but every local test would touch the live data.
+- **Two-way sync.** Real complexity (conflicts, ordering) for a single-user project.
+- **`gcloud sql import` from a Cloud Storage bucket** for the restore. Works without the proxy, but adds an upload step and bucket permissions. The proxy is needed anyway to check the data afterwards, and shows errors line by line.
+
+**Reasoning:** One clear direction for data - local to cloud - with a simple, repeatable way to refresh it, and the read-only site guaranteeing that a refresh never loses anything.

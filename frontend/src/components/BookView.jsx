@@ -4,10 +4,12 @@
 
 import { useEffect, useRef } from "react";
 
+import { READ_ONLY } from "../api";
 import "./BookView.css";
 import GenreFilter from "./GenreFilter";
 import RatingForm from "./RatingForm";
 import RecommendationList from "./RecommendationList";
+import Stars from "./Stars";
 import StatusMessage from "./StatusMessage";
 
 // Takes:
@@ -88,9 +90,25 @@ export default function BookView({
         {backButton}
       </div>
 
-      {/* key: a different book remounts the form, so its fields start
-          from that book's rating instead of the previous one's. */}
-      <RatingForm key={book.id} bookId={book.id} currentRating={book.rating} onSaved={onRatingSaved} />
+      {READ_ONLY ? (
+        // Read-only build: no form (saving would be refused - see
+        // DECISIONS.md), but an existing rating is still worth showing.
+        // Labeled just "rating", not "your rating": on the public site it
+        // belongs to the site's owner, not the visitor.
+        book.rating && (
+          <p className="book-view__rating">
+            דירוג:{" "}
+            <span className="book-view__stars" role="img" aria-label={`${book.rating.rating} מתוך 5`}>
+              <Stars rating={book.rating.rating} />
+            </span>
+            {book.rating.note && <span className="book-view__note"> — {book.rating.note}</span>}
+          </p>
+        )
+      ) : (
+        // key: a different book remounts the form, so its fields start
+        // from that book's rating instead of the previous one's.
+        <RatingForm key={book.id} bookId={book.id} currentRating={book.rating} onSaved={onRatingSaved} />
+      )}
 
       <div className="book-view__fleuron" aria-hidden="true">
         ❦

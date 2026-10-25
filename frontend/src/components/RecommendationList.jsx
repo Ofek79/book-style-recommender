@@ -1,5 +1,6 @@
 // Recommendations list for the selected book on the main screen.
 
+import { READ_ONLY } from "../api";
 import "./RecommendationList.css";
 import RecommendationCard from "./RecommendationCard";
 import StatusMessage from "./StatusMessage";
@@ -30,7 +31,11 @@ export default function RecommendationList({ status, recommendations, onSelectBo
   if (status === "not_tagged") {
     return (
       <StatusMessage variant="empty">
-        את הספר הזה עוד לא תייגנו, ולכן אין לו המלצות. אפשר לתייג אותו במסך "תיוג ספרים".
+        {/* The pointer to the tagging screen only makes sense where that
+            screen exists - not in the public read-only build. */}
+        {READ_ONLY
+          ? "את הספר הזה עוד לא תייגנו, ולכן אין לו המלצות."
+          : 'את הספר הזה עוד לא תייגנו, ולכן אין לו המלצות. אפשר לתייג אותו במסך "תיוג ספרים".'}
       </StatusMessage>
     );
   }
