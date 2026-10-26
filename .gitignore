@@ -12,6 +12,10 @@ backend/llm_comparison_results.json
 node_modules/
 dist/
 
+# --- Firebase CLI (frontend deploy): debug log and local deploy cache ---
+firebase-debug.log
+.firebase/
+
 # --- Environment and secrets ---
 .env
 *.env

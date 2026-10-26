@@ -1,0 +1,5 @@
+# Files gcloud doesn't upload for "gcloud run deploy --source".
+# Same list as .dockerignore, which only filters the Docker build
+# step, not the upload before it.
+.gcloudignore
+#!include:.dockerignore

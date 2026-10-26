@@ -88,7 +88,8 @@ file next to each component that needs one (`SearchForm.css`,
 `GenreFilter.css`, `BookCard.css`, `BookResults.css`, `TaggingScreen.css`).
 `docs/` folder for README assets (`docs/screenshot.png`, added by hand).
 Deployment (GCP, see `DECISIONS.md`): `backend/Dockerfile`,
-`backend/.dockerignore`, `frontend/.env.production`. The `firebase-tools` CLI
+`backend/.dockerignore`, `backend/.gcloudignore`, `frontend/.env.production`,
+`frontend/firebase.json`, `frontend/.firebaserc`. The `firebase-tools` CLI
 is an approved exception to rule 5, installed on the machine only.
 
 **Environment files:** two separate `.env` files — root (`POSTGRES_*`,

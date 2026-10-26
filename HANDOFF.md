@@ -1,8 +1,9 @@
 # Handoff — current project state
 
-Rewritten 2026-10-25. It replaces the version written 2026-09-12 / updated
-2026-09-14, before the 3-week break, when there was no frontend beyond
-`/health` and only 15 seed books. Read this first when picking the project
+Rewritten 2026-10-25, deployment added 2026-10-26. It replaces the version
+written 2026-09-12 / updated 2026-09-14, before the 3-week break, when there
+was no frontend beyond `/health` and only 15 seed books. Read this first when
+picking the project
 back up. For how to run things, see `README.md`. For why each choice was
 made, see `DECISIONS.md`. For how far the LLM tagging can be trusted, see
 `EVALUATION.md`. For the working rules, see `CLAUDE.md`.
@@ -38,6 +39,52 @@ made, see `DECISIONS.md`. For how far the LLM tagging can be trusted, see
 
 **Tests:** 20 `pytest` tests on `similarity.py`. Run with
 `cd backend && pip install -r requirements-dev.txt && pytest`.
+
+## Deployment (live since 2026-10-26)
+
+**Site:** https://book-a-like.web.app (also `book-a-like.firebaseapp.com`).
+Read-only: no tagging tab, no rating form, and the API refuses writes with
+`403`. Checked end to end in a browser on 2026-10-26.
+
+**What runs where** (GCP project `book-a-like`, region `me-west1`; reasons in
+`DECISIONS.md`, 2026-10-25 and 2026-10-26 entries):
+
+| Part | Where | Name |
+|---|---|---|
+| API | Cloud Run | `book-a-like-api` - https://book-a-like-api-870137644140.me-west1.run.app |
+| Database | Cloud SQL, Postgres 16, `db-f1-micro`, no backups | instance `book-a-like-db`, database `book_style`, user `book_user` |
+| DB connection string | Secret Manager | `database-url`, version 1 |
+| API runtime identity | service account | `book-a-like-api@...` - Cloud SQL Client + access to that one secret |
+| Image builds | service account | `book-a-like-builder@...` - Cloud Build builder |
+| Frontend | Firebase Hosting | site `book-a-like` |
+
+**Cloud data = the local data on 2026-10-25** (136 books, 36/100
+`tagged_by`, 10 ratings), checked row by row with an md5 per table against
+the local database. Anything tagged or rated locally since then is not in
+the cloud until the next refresh.
+
+**Redeploy the API** (from the repo root, after a backend change):
+
+```
+gcloud run deploy book-a-like-api --source backend --region me-west1 --service-account book-a-like-api@book-a-like.iam.gserviceaccount.com --build-service-account projects/book-a-like/serviceAccounts/book-a-like-builder@book-a-like.iam.gserviceaccount.com --add-cloudsql-instances book-a-like:me-west1:book-a-like-db --set-secrets DATABASE_URL=database-url:1 --set-env-vars "^@^READ_ONLY=true@CORS_ALLOWED_ORIGINS=https://book-a-like.web.app,https://book-a-like.firebaseapp.com" --allow-unauthenticated --max-instances 2
+```
+
+**Redeploy the frontend** (from `frontend/`): `npm run build`, then
+`firebase deploy --only hosting`.
+
+**Refresh the cloud data from local** (replaces everything in the cloud):
+1. `pg_dump --no-owner --no-acl` inside the local db container, to a file
+   outside the repo.
+2. Start the proxy: `cloud-sql-proxy --port 5433 book-a-like:me-west1:book-a-like-db`
+   (5433, because local Postgres has 5432).
+3. Drop the three tables in the cloud database, then restore with the local
+   container's `psql` against `host.docker.internal:5433`, using
+   `-v ON_ERROR_STOP=1 --single-transaction`. The password is read from the
+   `database-url` secret, never typed.
+4. Compare counts and per-table md5 with the local database.
+
+Steps 3-4 were done on 2026-10-26 into an empty database, so the "drop
+first" part has not been run yet - plan it before the first refresh.
 
 ## Data state
 
@@ -79,6 +126,10 @@ Agreed and recorded, not yet done:
    else depends on the name `localhost` (CORS checks the frontend's origin,
    not this). The frontend's `VITE_API_URL` also uses `localhost`. Browsers
    seemed fast, but this wasn't measured there.
+
+3. **Whether to stop Cloud SQL between demos.** Decide once the real cost
+   shows in billing (budget alert: 60 ILS). A stopped instance means the site
+   fails until it's started again.
 
 Other known gaps:
 
@@ -161,6 +212,35 @@ same debugging doesn't happen twice.
     Fix: re-run the next day. `add_books_bulk.py` and
     `compare_llm_tagging.py` both resume without redoing finished work.
 
+13. **`firebase projects:addfirebase` fails with `403 PERMISSION_DENIED`**
+    even with the right account and the Owner role.
+    Cause: the Firebase terms of service were never accepted, and only the
+    console can accept them. The console also offered to create a new
+    project (`book-a-like-602d1`) instead of using the existing one.
+    Fix: add Firebase to the existing project from the console. Never create
+    a second project.
+
+14. **`gcloud run deploy --source` fails: `...-compute@developer... does not
+    have storage.objects.get access`.**
+    Cause: no build account given, so Cloud Build fell back to the default
+    Compute account, which has no roles in this project.
+    Fix: always pass `--build-service-account` (see the redeploy command
+    above).
+
+15. **A secret written from PowerShell gets a hidden line break at the end.**
+    Cause: PowerShell 5.1 adds one when it pipes a string to a native
+    program. Inside `DATABASE_URL` that breaks the connection.
+    Fix: write secrets from Bash with `printf '%s' ... | gcloud secrets ...
+    --data-file=-`.
+
+16. **`gcloud components install` fails in a non-interactive shell**
+    ("Cannot use bundled Python installation...").
+    Fix: run it yourself in a normal PowerShell window.
+
+17. **The first request to the live site takes a few seconds.**
+    Cause: Cloud Run scales to zero (`min-instances` 0), so it has to start a
+    container first. Not an error.
+
 ## Suggested order for the next session
 
 1. Open item 2 (`localhost` → `127.0.0.1` in `api_client.py`): small, and it
@@ -170,3 +250,5 @@ same debugging doesn't happen twice.
 4. Collect about 20 ratings, then revisit the equal weights in `similarity.py`.
 5. Optional: automated tests for the API endpoints, a `?book=<id>` URL, real
    Open Library metadata.
+6. After a week or two of the site being live: check the real cost in
+   billing and decide open item 3.

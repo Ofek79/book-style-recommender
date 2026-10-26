@@ -740,3 +740,107 @@ A refresh **replaces** the cloud data. That's safe only because nothing is ever 
 - **`gcloud sql import` from a Cloud Storage bucket** for the restore. Works without the proxy, but adds an upload step and bucket permissions. The proxy is needed anyway to check the data afterwards, and shows errors line by line.
 
 **Reasoning:** One clear direction for data - local to cloud - with a simple, repeatable way to refresh it, and the read-only site guaranteeing that a refresh never loses anything.
+
+---
+
+## 2026-10-26 — The secret holds the whole `DATABASE_URL`, not just the password
+
+**Decision:** One Secret Manager secret, `database-url`, holds the full connection string: `postgresql://book_user:<password>@/book_style?host=/cloudsql/book-a-like:me-west1:book-a-like-db`. Cloud Run exposes it as the `DATABASE_URL` environment variable, so `db.py` runs unchanged.
+
+The password was generated with Python's `secrets.token_urlsafe(24)` (letters, digits, `-`, `_` only, so it needs no escaping inside a URL). It lived only in a shell variable: never printed, never written to a file. Secret Manager is the only place it exists. Anything that needs it later (e.g. `psql` for the import) reads it from there.
+
+**Rejected alternatives:**
+- **Only the password in the secret, the rest in plain environment variables.** The code would have to build the URL itself - a change to `db.py` made only for the cloud.
+- **The whole URL as a plain Cloud Run environment variable.** The password would show in the console and in `gcloud run services describe`.
+
+**Cost accepted:** changing any part of the URL (e.g. the database name) means adding a new version of the whole secret.
+
+**A Windows detail that mattered:** the secret was written from Bash with `printf '%s'`, not piped from PowerShell. PowerShell 5.1 adds a line break when it pipes a string to a native program, and that line break would have ended up inside the secret and broken the URL. Checked afterwards: 118 bytes, no trailing newline.
+
+---
+
+## 2026-10-26 — Cloud Run runs as a dedicated service account with two roles
+
+**Decision:** The API on Cloud Run runs as its own service account, `book-a-like-api@book-a-like.iam.gserviceaccount.com`, which holds exactly two roles:
+- `roles/cloudsql.client` on the project - to connect to the database. Cloud SQL has no per-instance grant without IAM Conditions, and the project has one instance, so in practice the scope is the same.
+- `roles/secretmanager.secretAccessor` on the `database-url` secret only, not the project. A secret added to the project later is not readable by the API unless granted on purpose.
+
+Checked after granting: those two bindings are the only ones the account has.
+
+**Rejected alternative:** The default Compute Engine service account, which Cloud Run uses when none is given. In many projects it has the broad `Editor` role on the whole project, so a bug or a leaked token in the API could change almost anything in it.
+
+**Reasoning:** Least privilege - the same principle as the CORS allow-list (one origin, `GET` only, 2026-09-06) and the read-only public site (2026-10-25): grant only what is actually used.
+
+**Not covered here:** building the image (`gcloud run deploy --source`) runs as Cloud Build's own account, not this one - see the next entry.
+
+---
+
+## 2026-10-26 — Image builds run as a dedicated build service account
+
+**Decision:** `gcloud run deploy --source` builds the image as `book-a-like-builder@book-a-like.iam.gserviceaccount.com`, passed with `--build-service-account`. It holds exactly one role, `roles/cloudbuild.builds.builder` on the project: read the uploaded source from Cloud Storage, push the image to Artifact Registry, write build logs.
+
+**What prompted this:** The first deploy failed: `870137644140-compute@developer.gserviceaccount.com does not have storage.objects.get access`. Cloud Build fell back to the default Compute Engine service account, which - checked directly - had no roles at all in this project. New projects no longer give that account `Editor` automatically.
+
+**Rejected alternative:** Granting the same role to the default Compute Engine account. It's the fix Google's docs suggest for this error and needs no extra flag. But that account is what any service gets when none is set, so a role given to it quietly reaches whatever is created later without an explicit account.
+
+**Reasoning:** The same least-privilege principle as the runtime account (previous entry): one account per job, each with only the role that job needs. The runtime account can't build, and the build account can't read the database secret.
+
+**Accepted limit:** the role is project-wide, so a build could read any bucket in the project. Narrowing it to one bucket would mean per-bucket grants on buckets that Google creates automatically, for a project that has only those.
+
+---
+
+## 2026-10-26 — `backend/.gcloudignore`: the upload has its own ignore file
+
+**Decision:** A new `backend/.gcloudignore` with one real line, `#!include:.dockerignore`, so `gcloud` skips the same files Docker does.
+
+**What prompted this:** `gcloud run deploy --source backend` works in two steps: `gcloud` uploads the folder to a Cloud Storage bucket, then Cloud Build builds the image from it. `.dockerignore` only filters the second step. `gcloud meta list-files-for-upload backend` showed 6,082 files to upload, 6,050 of them from `.venv` (about 91 MB), plus caches and local LLM-comparison output. The image would still have been clean, but the upload would be slow and a copy of all of it would sit in the bucket. No secret was at risk: `.env` is at the repo root, outside `backend/`.
+
+**Checked after adding it:** the same command lists 15 files - the source code and the requirements files only. This also confirmed that `#!include:` works with a file other than `.gitignore`.
+
+**Rejected alternative:** Copying the patterns from `.dockerignore` into `.gcloudignore`. Two lists of the same files can drift apart - the same reason `schemas.py` was extracted (2026-10-14).
+
+---
+
+## 2026-10-26 — Cloud Run service settings
+
+**Decision:** The service `book-a-like-api` (region `me-west1`) is deployed with:
+- `--set-secrets DATABASE_URL=database-url:1` - a fixed secret version, not `:latest`. With `:latest`, a new secret version would be picked up silently the next time Cloud Run starts an instance, with no deploy and no trace. A fixed version makes a password change a deliberate deploy - the same reasoning as pinning the Gemini model name (2026-10-14).
+- `--max-instances 2` - a cost ceiling, and a guard for the database: every request opens its own connection, and `db-f1-micro` allows only a small number of them. `--min-instances` stays at the default 0, so nothing runs (or costs) when nobody visits. The price is a cold start of a few seconds on the first request after a quiet period.
+- `CORS_ALLOWED_ORIGINS=https://book-a-like.web.app,https://book-a-like.firebaseapp.com` - Firebase serves the same site on both, and a visitor on the second would otherwise get a page whose every API call fails, with no explanation. Set at the first deploy, before the site existed, because Firebase names the default site after the project ID; checked once the site was created.
+- `--allow-unauthenticated` - the API is public, since every visitor's browser calls it directly. Writes are blocked by `READ_ONLY=true`.
+
+**A `gcloud` detail:** `--set-env-vars` separates variables with commas, so a comma inside a value needs gcloud's escaping syntax: `"^@^READ_ONLY=true@CORS_ALLOWED_ORIGINS=a,b"` makes `@` the separator instead (see `gcloud topic escaping`). Rejected: `--env-vars-file`, a new file just for one comma.
+
+**Checked after deploy:** `/health` 200; `GET /books` returns all 136 in two pages; recommendations with Hebrew rationales; a `PUT` returns `403 read_only` (sent to a book id that doesn't exist, so it couldn't have written anything even if read-only mode were off); CORS preflight allowed from both Firebase origins and refused from any other.
+
+---
+
+## 2026-10-26 — Cloud SQL Auth Proxy logs in with Application Default Credentials
+
+**Decision:** The Proxy, used locally to import and check data, authenticates with Application Default Credentials (`gcloud auth application-default login`, run once by hand). The credentials file stays on the machine for future data refreshes.
+
+**Rejected alternative:** The Proxy's `--gcloud-auth` flag, which reuses the `gcloud` login with no extra step. The Proxy's own `--help` calls it "a legacy feature [that] generally should not be used".
+
+**Cost accepted:** a long-lived credentials file in `%APPDATA%\gcloud\`, with the user's own (Owner) permissions, which any local Google library can pick up. It can be removed with `gcloud auth application-default revoke`, at the cost of logging in again before each refresh.
+
+---
+
+## 2026-10-26 — Firebase Hosting config: `frontend/firebase.json` and `frontend/.firebaserc`
+
+**Decision:** Both files are written by hand, not by `firebase init hosting`, and live in `frontend/` - deploys run from there, the same way the backend's deploy files live in `backend/`.
+- `.firebaserc` fixes the target project to `book-a-like`, so a deploy can't go to another project by a mistyped or forgotten `--project`.
+- `firebase.json` sets `"public": "dist"` (the output of `npm run build`) and cache headers:
+  - `/` and `/index.html`: `no-cache` - the browser checks for a new version on every load, so a new deploy shows up immediately. Both paths are listed because Firebase matches `source` against the requested path, and a visitor to the site's root asks for `/`, not `/index.html`.
+  - `/assets/**`: `public, max-age=31536000, immutable` - Vite puts a content hash in every asset's file name (`index-CXojC3tN.js`), so a new build always has new names, and an old file can safely be cached for a year.
+- No `rewrites`: the app has no routes, and its URL never changes. A future `?book=<id>` wouldn't need one either - a query string still loads `index.html`.
+
+**What prompted the headers:** Without them, Firebase sent `Cache-Control: max-age=3600` on everything, including `index.html` (checked with `curl` after the first deploy). A browser could show the previous version for up to an hour after a deploy - easy to mistake for a failed deploy.
+
+**Rejected alternatives:**
+- **`firebase init hosting`.** An interactive wizard that also asks about a sample `index.html` and GitHub Actions - nothing this project needs. Two short files written by hand can be explained line by line.
+- **Both files at the repo root.** Would mix frontend deploy config into the root, next to files the backend uses.
+- **One glob matching both `/` and `/index.html`.** Shorter, but harder to read than two plain entries.
+
+**Checked after deploy:** `/` and `/index.html` return `no-cache`; the JS and CSS assets return the one-year header.
+
+**Before Firebase could be used at all:** `firebase projects:addfirebase` failed with `403 PERMISSION_DENIED`, even with the right account and the Owner role. The cause was the Firebase terms of service, which the account had never accepted - and which can only be accepted in the Firebase console, not the CLI. Adding Firebase to the existing project through the console fixed it.
